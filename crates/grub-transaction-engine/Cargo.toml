@@ -1,0 +1,15 @@
+[package]
+name = "grub-transaction-engine"
+description = "GRUB 配置事务性写入、快照备份、Diff 计算与灾难恢复回滚引擎"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

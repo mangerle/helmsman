@@ -1,0 +1,19 @@
+[package]
+name = "helmsman-daemon"
+description = "Helmsman (舵手) 特权后台服务与事务调度器"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+grub-config-parser.workspace = true
+grub-boot-reader.workspace = true
+grub-distro-adapter.workspace = true
+grub-transaction-engine.workspace = true

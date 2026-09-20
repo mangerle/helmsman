@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/grub-config-parser",
+    "crates/grub-boot-reader",
+    "crates/grub-distro-adapter",
+    "crates/grub-transaction-engine",
+    "crates/helmsman-daemon",
+    "crates/helmsman-ui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96.0"
+authors = ["wangle"]
+license = "Apache-2.0"
+repository = "https://github.com/mangerle/helmsman"
+homepage = "https://github.com/mangerle/helmsman"
+readme = "README.md"
+keywords = ["grub", "bootloader", "linux", "system", "gui"]
+categories = ["command-line-utilities", "gui", "os::linux-apis"]
+
+[workspace.dependencies]
+grub-config-parser = { path = "crates/grub-config-parser", version = "0.1.0" }
+grub-boot-reader = { path = "crates/grub-boot-reader", version = "0.1.0" }
+grub-distro-adapter = { path = "crates/grub-distro-adapter", version = "0.1.0" }
+grub-transaction-engine = { path = "crates/grub-transaction-engine", version = "0.1.0" }
+helmsman-daemon = { path = "crates/helmsman-daemon", version = "0.1.0" }
+helmsman-ui = { path = "crates/helmsman-ui", version = "0.1.0" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "deny"
+todo = "warn"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

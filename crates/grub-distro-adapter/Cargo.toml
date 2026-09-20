@@ -1,0 +1,15 @@
+[package]
+name = "grub-distro-adapter"
+description = "跨 Linux 发行版与固件类型适配器"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

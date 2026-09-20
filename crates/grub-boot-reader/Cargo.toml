@@ -1,0 +1,15 @@
+[package]
+name = "grub-boot-reader"
+description = "解析 /boot/grub/grub.cfg 提取引导菜单项树形结构"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
