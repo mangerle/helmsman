@@ -103,20 +103,21 @@ fn close_finished_scopes(
         *in_entry_depth = None;
     }
 
-    while let Some(top) = submenu_stack.last() {
-        if current_depth <= top.start_depth {
-            let closed = submenu_stack.pop().unwrap();
-            let full_path = build_submenu_full_path(submenu_stack, &closed.title);
-            let submenu_node = MenuNode::Submenu {
-                title: closed.title,
-                id: closed.id,
-                full_path,
-                children: closed.children,
-            };
-            add_node_to_current_scope(root_nodes, submenu_stack, submenu_node);
-        } else {
+    while matches!(
+        submenu_stack.last(),
+        Some(top) if current_depth <= top.start_depth
+    ) {
+        let Some(closed) = submenu_stack.pop() else {
             break;
-        }
+        };
+        let full_path = build_submenu_full_path(submenu_stack, &closed.title);
+        let submenu_node = MenuNode::Submenu {
+            title: closed.title,
+            id: closed.id,
+            full_path,
+            children: closed.children,
+        };
+        add_node_to_current_scope(root_nodes, submenu_stack, submenu_node);
     }
 }
 
