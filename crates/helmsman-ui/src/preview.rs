@@ -127,7 +127,8 @@ mod tests {
     #[test]
     fn test_menu_preview_lifecycle_and_tick() {
         let default_grub = "GRUB_DEFAULT=entry2\nGRUB_TIMEOUT=3\n";
-        let grub_cfg = "menuentry 'Ubuntu' --id 'entry1' {}\nmenuentry 'Windows' --id 'entry2' {}\n";
+        let grub_cfg =
+            "menuentry 'Ubuntu' --id 'entry1' {}\nmenuentry 'Windows' --id 'entry2' {}\n";
 
         let state = AppState::new_from_content(default_grub, grub_cfg);
         let mut preview = MenuPreviewModel::from_app_state(&state);

@@ -61,7 +61,7 @@ pub fn flatten_boot_entries(
 ) -> Vec<BootEntryItem> {
     let mut raw_entries = Vec::with_capacity(16);
     for node in nodes {
-        node.collect_entries_into(&mut raw_entries);
+        raw_entries.extend(node.collect_entries());
     }
 
     let default_idx = current_default.and_then(|d| d.parse::<usize>().ok());

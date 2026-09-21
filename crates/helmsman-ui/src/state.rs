@@ -141,7 +141,7 @@ impl AppState {
         let target_path = self.selected_entry_path.as_deref()?;
         let mut entries = Vec::with_capacity(16);
         for node in &self.menu_nodes {
-            node.collect_entries_into(&mut entries);
+            entries.extend(node.collect_entries());
         }
         entries.into_iter().find(|e| e.full_path == target_path)
     }
