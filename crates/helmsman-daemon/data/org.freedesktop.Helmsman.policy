@@ -6,18 +6,53 @@
   <vendor>Helmsman Project</vendor>
   <vendor_url>https://github.com/mangerle/helmsman</vendor_url>
 
-  <action id="org.freedesktop.Helmsman.modify">
-    <description>Modify GRUB bootloader configuration</description>
-    <description xml:lang="zh_CN">修改 GRUB 引导加载程序配置</description>
-    <message>Authentication is required to modify GRUB configuration and update boot entries</message>
-    <message xml:lang="zh_CN">修改 GRUB 配置并更新系统引导项需要管理员身份验证</message>
-    <icon_name>dialog-password</icon_name>
+  <action id="org.freedesktop.Helmsman.read">
+    <description>Read GRUB bootloader configuration and snapshots</description>
+    <description xml:lang="zh_CN">读取 GRUB 引导配置与历史快照</description>
+    <message>Authentication is required to read bootloader configuration</message>
+    <message xml:lang="zh_CN">读取引导加载程序配置需要身份验证</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.Helmsman.set-default">
+    <description>Quickly switch default boot entry</description>
+    <description xml:lang="zh_CN">快速切换默认系统引导项</description>
+    <message>Authentication is required to change default boot entry</message>
+    <message xml:lang="zh_CN">切换默认系统引导项需要管理员身份验证</message>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
+  </action>
+
+  <action id="org.freedesktop.Helmsman.apply-changes">
+    <description>Apply GRUB configuration changes and rebuild boot script</description>
+    <description xml:lang="zh_CN">提交 GRUB 配置修改并重新生成引导脚本</description>
+    <message>Authentication is required to update GRUB configuration and bootloader</message>
+    <message xml:lang="zh_CN">更新 GRUB 配置文件并重新生成引导脚本需要管理员身份验证</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/helmsman-daemon</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+  <action id="org.freedesktop.Helmsman.rollback">
+    <description>Rollback GRUB configuration to a previous snapshot</description>
+    <description xml:lang="zh_CN">回滚 GRUB 配置至指定历史快照</description>
+    <message>Authentication is required to restore previous GRUB configuration</message>
+    <message xml:lang="zh_CN">还原历史 GRUB 配置快照需要管理员身份验证</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
   </action>
 </policyconfig>
