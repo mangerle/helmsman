@@ -1,3 +1,4 @@
+use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
 use crate::executor::{SafeCommand, SecurityError};
 use grub_distro_adapter::DistroProfile;
 use grub_transaction_engine::{
@@ -8,6 +9,7 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use tracing::{debug, info, warn};
 
 /// 特权后台服务领域错误枚举
@@ -175,44 +177,81 @@ impl GrubService {
         reason: &str,
         options: &TransactionOptions,
     ) -> Result<TransactionResult, DaemonError> {
-        if !self.default_config_path.exists() {
-            return Err(DaemonError::ConfigNotFound {
-                path: self.default_config_path.clone(),
+        let start_time = Instant::now();
+        let diff_summary = fs::read_to_string(&self.default_config_path)
+            .ok()
+            .map(|orig| {
+                let diff = generate_unified_diff(&orig, new_config);
+                let added = diff
+                    .diff_text
+                    .lines()
+                    .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
+                    .count();
+                let removed = diff
+                    .diff_text
+                    .lines()
+                    .filter(|l| l.starts_with('-') && !l.starts_with("---"))
+                    .count();
+                format!("+{} / -{}", added, removed)
             });
-        }
 
-        // 检查包管理器并发互斥锁，避免与系统更新冲突
-        check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
-            DaemonError::PackageManagerLocked {
-                message: e.to_string(),
+        let res = (|| -> Result<TransactionResult, DaemonError> {
+            if !self.default_config_path.exists() {
+                return Err(DaemonError::ConfigNotFound {
+                    path: self.default_config_path.clone(),
+                });
             }
-        })?;
 
-        debug!("开始准备配置变更事务，原因: {}", reason);
-
-        let snapshot = create_snapshot(&self.default_config_path, &self.backup_dir, reason)
-            .map_err(|e| DaemonError::SnapshotFailed {
-                reason: e.to_string(),
+            // 检查包管理器并发互斥锁，避免与系统更新冲突
+            check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
+                DaemonError::PackageManagerLocked {
+                    message: e.to_string(),
+                }
             })?;
 
-        if let Err(e) = atomic_write(&self.default_config_path, new_config) {
-            return Err(DaemonError::AtomicWriteFailed {
-                reason: e.to_string(),
-            });
-        }
-        debug!("新配置原子替换成功，待触发引导更新");
+            debug!("开始准备配置变更事务，原因: {}", reason);
 
-        if options.skip_command_execution {
-            info!("跳过引导命令执行（模拟测试模式），快照 ID: {}", snapshot.id);
-            return Ok(TransactionResult {
-                success: true,
-                snapshot_id: snapshot.id,
-                log_output: "跳过引导命令执行（模拟测试模式）".to_string(),
-                error_message: None,
-            });
-        }
+            let snapshot = create_snapshot(&self.default_config_path, &self.backup_dir, reason)
+                .map_err(|e| DaemonError::SnapshotFailed {
+                    reason: e.to_string(),
+                })?;
 
-        self.execute_update_with_rollback(&snapshot, options)
+            if let Err(e) = atomic_write(&self.default_config_path, new_config) {
+                return Err(DaemonError::AtomicWriteFailed {
+                    reason: e.to_string(),
+                });
+            }
+            debug!("新配置原子替换成功，待触发引导更新");
+
+            if options.skip_command_execution {
+                info!("跳过引导命令执行（模拟测试模式），快照 ID: {}", snapshot.id);
+                return Ok(TransactionResult {
+                    success: true,
+                    snapshot_id: snapshot.id,
+                    log_output: "跳过引导命令执行（模拟测试模式）".to_string(),
+                    error_message: None,
+                });
+            }
+
+            self.execute_update_with_rollback(&snapshot, options)
+        })();
+
+        let (success, snapshot_id) = match &res {
+            Ok(r) => (r.success, Some(r.snapshot_id.clone())),
+            Err(_) => (false, None),
+        };
+
+        record_audit_event(&AuditEvent {
+            caller_uid: resolve_caller_uid(),
+            action: AuditAction::ApplyChanges,
+            reason: reason.to_string(),
+            snapshot_id,
+            success,
+            duration: start_time.elapsed(),
+            diff_summary,
+        });
+
+        res
     }
 
     /// 校验生成的引导脚本语法（若系统支持）
@@ -334,25 +373,40 @@ impl GrubService {
     /// # Errors
     /// 当快照列表无法读取、未找到 ID 或还原失败时返回对应的 `DaemonError`。
     pub fn rollback_to_snapshot(&self, snapshot_id: &str) -> Result<(), DaemonError> {
-        let snapshots =
-            list_snapshots(&self.backup_dir).map_err(|e| DaemonError::SnapshotListFailed {
+        let start_time = Instant::now();
+        let res = (|| -> Result<(), DaemonError> {
+            let snapshots =
+                list_snapshots(&self.backup_dir).map_err(|e| DaemonError::SnapshotListFailed {
+                    reason: e.to_string(),
+                })?;
+
+            let target_snapshot = snapshots
+                .into_iter()
+                .find(|s| s.id == snapshot_id)
+                .ok_or_else(|| DaemonError::SnapshotNotFound {
+                    id: snapshot_id.to_string(),
+                })?;
+
+            restore_snapshot(&target_snapshot).map_err(|e| DaemonError::SnapshotRestoreFailed {
+                id: snapshot_id.to_string(),
                 reason: e.to_string(),
             })?;
 
-        let target_snapshot = snapshots
-            .into_iter()
-            .find(|s| s.id == snapshot_id)
-            .ok_or_else(|| DaemonError::SnapshotNotFound {
-                id: snapshot_id.to_string(),
-            })?;
+            info!("成功还原历史快照: {}", snapshot_id);
+            Ok(())
+        })();
 
-        restore_snapshot(&target_snapshot).map_err(|e| DaemonError::SnapshotRestoreFailed {
-            id: snapshot_id.to_string(),
-            reason: e.to_string(),
-        })?;
+        record_audit_event(&AuditEvent {
+            caller_uid: resolve_caller_uid(),
+            action: AuditAction::RollbackSnapshot,
+            reason: format!("还原至快照 {}", snapshot_id),
+            snapshot_id: Some(snapshot_id.to_string()),
+            success: res.is_ok(),
+            duration: start_time.elapsed(),
+            diff_summary: None,
+        });
 
-        info!("成功还原历史快照: {}", snapshot_id);
-        Ok(())
+        res
     }
 
     /// 列出所有可用快照
@@ -370,39 +424,54 @@ impl GrubService {
     /// # Errors
     /// 当包管理器被占用、命令执行失败或退出码非零时返回对应的 `DaemonError`。
     pub fn set_default_entry_fast(&self, entry_id_or_title: &str) -> Result<(), DaemonError> {
-        check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
-            DaemonError::PackageManagerLocked {
-                message: e.to_string(),
-            }
-        })?;
-
-        debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
-
-        let cmd = SafeCommand::new(&self.distro_profile.set_default_command)
-            .and_then(|c| c.arg(entry_id_or_title))
-            .map_err(DaemonError::SecurityCheckFailed)?;
-
-        match cmd.output() {
-            Ok(output) => {
-                if output.status.success() {
-                    info!("通过 grubenv 成功设置默认启动项: {}", entry_id_or_title);
-                    Ok(())
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    Err(DaemonError::CommandLaunchFailed {
-                        command: self.distro_profile.set_default_command.clone(),
-                        reason: format!(
-                            "退出码非零 ({:?}): {}",
-                            output.status.code(),
-                            stderr.trim()
-                        ),
-                    })
+        let start_time = Instant::now();
+        let res = (|| -> Result<(), DaemonError> {
+            check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
+                DaemonError::PackageManagerLocked {
+                    message: e.to_string(),
                 }
+            })?;
+
+            debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
+
+            let cmd = SafeCommand::new(&self.distro_profile.set_default_command)
+                .and_then(|c| c.arg(entry_id_or_title))
+                .map_err(DaemonError::SecurityCheckFailed)?;
+
+            match cmd.output() {
+                Ok(output) => {
+                    if output.status.success() {
+                        info!("通过 grubenv 成功设置默认启动项: {}", entry_id_or_title);
+                        Ok(())
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        Err(DaemonError::CommandLaunchFailed {
+                            command: self.distro_profile.set_default_command.clone(),
+                            reason: format!(
+                                "退出码非零 ({:?}): {}",
+                                output.status.code(),
+                                stderr.trim()
+                            ),
+                        })
+                    }
+                }
+                Err(e) => Err(DaemonError::CommandLaunchFailed {
+                    command: self.distro_profile.set_default_command.clone(),
+                    reason: e.to_string(),
+                }),
             }
-            Err(e) => Err(DaemonError::CommandLaunchFailed {
-                command: self.distro_profile.set_default_command.clone(),
-                reason: e.to_string(),
-            }),
-        }
+        })();
+
+        record_audit_event(&AuditEvent {
+            caller_uid: resolve_caller_uid(),
+            action: AuditAction::SetDefaultFast,
+            reason: format!("设置为 {}", entry_id_or_title),
+            snapshot_id: None,
+            success: res.is_ok(),
+            duration: start_time.elapsed(),
+            diff_summary: None,
+        });
+
+        res
     }
 }

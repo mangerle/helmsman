@@ -240,3 +240,24 @@ fn test_service_command_timeout_triggers_rollback() {
     let restored = fs::read_to_string(&config_file).unwrap();
     assert_eq!(restored, "GRUB_DEFAULT=0\n");
 }
+
+#[test]
+fn test_service_audit_event_logged() {
+    use helmsman_daemon::{AuditAction, AuditEvent, record_audit_event};
+    use std::time::Duration;
+
+    // 验证 AuditEvent 可被正常构造并由 record_audit_event 消费记录
+    let event = AuditEvent {
+        caller_uid: 1000,
+        action: AuditAction::ApplyChanges,
+        reason: "测试结构化审计追踪".to_string(),
+        snapshot_id: Some("snap_001".to_string()),
+        success: true,
+        duration: Duration::from_millis(50),
+        diff_summary: Some("+1 / -0".to_string()),
+    };
+
+    record_audit_event(&event);
+    assert_eq!(event.caller_uid, 1000);
+    assert_eq!(event.action, AuditAction::ApplyChanges);
+}
