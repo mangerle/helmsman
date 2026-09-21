@@ -1,12 +1,15 @@
-use helmsman_daemon::{GrubService, TransactionOptions};
+use helmsman_daemon::{GrubService, TransactionOptions, run_dbus_server};
 use std::env;
 use std::fs;
 use std::process;
+use std::sync::Arc;
+use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, fmt};
 
 fn print_usage() {
     println!("Helmsman (舵手) 特权后台服务 (helmsman-daemon)");
     println!("用法:");
+    println!("  helmsman-daemon [--daemon]             启动 D-Bus 系统总线监听服务（默认模式）");
     println!("  helmsman-daemon --status               查看当前系统与引导适配状态");
     println!("  helmsman-daemon --list-snapshots       列出所有可用历史配置快照");
     println!("  helmsman-daemon --preview <file>       比对传入新配置与当前配置的 Diff");
@@ -127,17 +130,22 @@ fn handle_rollback(service: &GrubService, args: &[String]) {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     fmt().with_env_filter(filter).init();
 
     let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        print_usage();
-        process::exit(1);
-    }
+    let service = Arc::new(GrubService::new_system_default());
 
-    let service = GrubService::new_system_default();
+    if args.len() < 2 || args[1] == "--daemon" {
+        info!("正在以 D-Bus 守护进程模式启动...");
+        if let Err(e) = run_dbus_server(service, 60).await {
+            error!("D-Bus 守护进程异常退出: {}", e);
+            process::exit(1);
+        }
+        return;
+    }
 
     match args[1].as_str() {
         "--status" => handle_status(&service),
@@ -145,7 +153,11 @@ fn main() {
         "--preview" => handle_preview(&service, &args),
         "--apply" => handle_apply(&service, &args),
         "--rollback" => handle_rollback(&service, &args),
-        _ => {
+        "--help" | "-h" => {
+            print_usage();
+        }
+        unknown => {
+            eprintln!("未知选项: {}", unknown);
             print_usage();
             process::exit(1);
         }
