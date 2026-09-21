@@ -20,7 +20,11 @@ impl BootEntryItem {
     pub fn from_entry(entry: &BootEntry, current_default: Option<&str>) -> Self {
         let is_default = match current_default {
             Some("saved") => false,
-            Some(target) => entry.full_path == target || entry.title == target,
+            Some(target) => {
+                entry.full_path == target
+                    || entry.title == target
+                    || entry.id.as_deref() == Some(target)
+            }
             None => false,
         };
 
@@ -55,15 +59,22 @@ pub fn flatten_boot_entries(
     nodes: &[MenuNode],
     current_default: Option<&str>,
 ) -> Vec<BootEntryItem> {
-    let mut entries = Vec::new();
     let mut raw_entries = Vec::with_capacity(16);
-
     for node in nodes {
         node.collect_entries_into(&mut raw_entries);
     }
 
-    for raw in raw_entries {
-        entries.push(BootEntryItem::from_entry(raw, current_default));
+    let default_idx = current_default.and_then(|d| d.parse::<usize>().ok());
+    let mut entries = Vec::with_capacity(raw_entries.len());
+
+    for (idx, raw) in raw_entries.into_iter().enumerate() {
+        let mut item = BootEntryItem::from_entry(raw, current_default);
+        if let Some(target_idx) = default_idx
+            && target_idx == idx
+        {
+            item.is_default = true;
+        }
+        entries.push(item);
     }
 
     entries
