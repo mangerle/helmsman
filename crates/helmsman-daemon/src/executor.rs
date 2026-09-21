@@ -1,59 +1,62 @@
-use std::error::Error;
-use std::fmt;
 use std::io;
 use std::process::{Command, Output};
+use thiserror::Error;
 use tracing::{debug, warn};
 
 /// 安全执行器错误枚举
-#[derive(Debug, PartialEq, Eq)]
+///
+/// # 设计原理
+/// - **实现初衷**：特权进程调用外部命令时必须给出可匹配、带现场上下文的强类型错误，
+///   便于调用方区分「未授权程序」与「危险参数」两类拦截。
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum SecurityError {
     /// 尝试执行非白名单允许的程序
-    ProgramNotAllowed { program: String },
+    #[error("安全拦截：程序 '{program}' 未在特权执行白名单中，拒绝执行")]
+    ProgramNotAllowed {
+        /// 被拒绝的程序路径或名称
+        program: String,
+    },
     /// 参数中包含危险的注入字符或非法格式
-    DangerousArgument { arg: String, reason: String },
+    #[error("安全拦截：参数 '{arg}' 存在注入风险，原因: {reason}")]
+    DangerousArgument {
+        /// 被拒绝的原始参数
+        arg: String,
+        /// 拒绝原因
+        reason: String,
+    },
 }
 
-impl fmt::Display for SecurityError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SecurityError::ProgramNotAllowed { program } => {
-                write!(
-                    f,
-                    "安全拦截：程序 '{}' 未在特权执行白名单中，拒绝执行",
-                    program
-                )
-            }
-            SecurityError::DangerousArgument { arg, reason } => {
-                write!(f, "安全拦截：参数 '{}' 存在注入风险，原因: {}", arg, reason)
-            }
-        }
-    }
-}
-
-impl Error for SecurityError {}
-
-/// 受信任的特权引导命令静态白名单集合
+/// 受信任的特权引导命令静态白名单（仅接受绝对路径）
 const ALLOWED_PROGRAMS: &[&str] = &[
-    "update-grub",
     "/usr/sbin/update-grub",
-    "grub-mkconfig",
+    "/usr/bin/update-grub",
+    "/sbin/update-grub",
     "/usr/sbin/grub-mkconfig",
     "/usr/bin/grub-mkconfig",
-    "grub2-mkconfig",
     "/usr/sbin/grub2-mkconfig",
     "/usr/bin/grub2-mkconfig",
-    "grub-script-check",
     "/usr/bin/grub-script-check",
-    "grub2-script-check",
+    "/usr/sbin/grub-script-check",
     "/usr/bin/grub2-script-check",
-    "grub-set-default",
+    "/usr/sbin/grub2-script-check",
     "/usr/bin/grub-set-default",
-    "grub2-set-default",
+    "/usr/sbin/grub-set-default",
     "/usr/bin/grub2-set-default",
-    // 单元测试与模拟环境允许的受限程序
+    "/usr/sbin/grub2-set-default",
+];
+
+/// 仅在 `test-support` 下编译的测试模拟程序白名单
+#[cfg(feature = "test-support")]
+const TEST_ALLOWED_PROGRAMS: &[&str] = &[
     "true",
     "false",
+    "echo",
     "cmd",
+    "sleep",
+    "/usr/bin/true",
+    "/bin/true",
+    "/usr/bin/sleep",
+    "/bin/sleep",
 ];
 
 /// 严禁出现的危险控制字符集合（防止 shell 注入）
@@ -64,10 +67,10 @@ const DANGEROUS_CHARS: &[char] = &['\n', '\r', ';', '&', '|', '`', '$', '(', ')'
 /// # 设计原理
 /// - **实现初衷**：在特权守护进程中调用外部系统命令时，绝不允许动态调用任意程序或直接经由 Shell 解释。
 /// - **核心优势**：
-///   1. 必须命中预定义白名单（`ALLOWED_PROGRAMS`）；
+///   1. 仅接受白名单中的**绝对路径**精确匹配，禁止按 basename 放行，避免 PATH 下同名可执行文件劫持；
 ///   2. 所有参数均逐字符检测是否包含 Shell 元字符（`;`, `&`, `|`, `$()` 等），彻底杜绝拼接提权；
 ///   3. 统一使用直接进程派生（`Command::new`），绝不调用 `sh -c`。
-/// - **代价与局限**：调用方无法使用复杂的 Shell 管道或通配符扩展，需使用纯参数列表。
+/// - **代价与局限**：调用方必须传入绝对路径；跨发行版命令位置由 distro-adapter 负责探测。
 #[derive(Debug, Clone)]
 pub struct SafeCommand {
     program: String,
@@ -78,7 +81,7 @@ impl SafeCommand {
     /// 创建受白名单保护的安全命令实例
     ///
     /// # Errors
-    /// 当程序名称或路径未在受信任白名单中时返回 `SecurityError::ProgramNotAllowed`。
+    /// 当程序路径未在受信任白名单中时返回 `SecurityError::ProgramNotAllowed`。
     pub fn new(program: &str) -> Result<Self, SecurityError> {
         if !is_program_allowed(program) {
             warn!("拒绝执行非白名单程序: {}", program);
@@ -209,14 +212,17 @@ impl SafeCommand {
     }
 }
 
-/// 检查程序是否在受信任白名单中
+/// 检查程序是否在受信任白名单中（仅绝对路径精确匹配）
 fn is_program_allowed(program: &str) -> bool {
-    let prog_name = std::path::Path::new(program)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(program);
+    if !program.starts_with('/') && !program.starts_with('\\') {
+        // 非绝对路径一律拒绝，防止 PATH 劫持
+        #[cfg(feature = "test-support")]
+        return TEST_ALLOWED_PROGRAMS.contains(&program);
+        #[cfg(not(feature = "test-support"))]
+        return false;
+    }
 
-    ALLOWED_PROGRAMS.contains(&program) || ALLOWED_PROGRAMS.contains(&prog_name)
+    ALLOWED_PROGRAMS.contains(&program)
 }
 
 /// 校验参数是否合法且不含危险字符
@@ -237,16 +243,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_allowed_programs() {
-        assert!(SafeCommand::new("grub-mkconfig").is_ok());
+    fn test_allowed_programs_absolute_paths() {
         assert!(SafeCommand::new("/usr/sbin/grub-mkconfig").is_ok());
-        assert!(SafeCommand::new("update-grub").is_ok());
-        assert!(SafeCommand::new("grub-script-check").is_ok());
-        assert!(SafeCommand::new("grub-set-default").is_ok());
+        assert!(SafeCommand::new("/usr/sbin/update-grub").is_ok());
+        assert!(SafeCommand::new("/usr/bin/grub-script-check").is_ok());
+        assert!(SafeCommand::new("/usr/bin/grub-set-default").is_ok());
     }
 
     #[test]
-    fn test_disallowed_programs() {
+    fn test_disallow_basename_and_unknown_paths() {
+        assert_eq!(
+            SafeCommand::new("grub-mkconfig").unwrap_err(),
+            SecurityError::ProgramNotAllowed {
+                program: "grub-mkconfig".to_string()
+            }
+        );
+        assert_eq!(
+            SafeCommand::new("/tmp/evil/grub-mkconfig").unwrap_err(),
+            SecurityError::ProgramNotAllowed {
+                program: "/tmp/evil/grub-mkconfig".to_string()
+            }
+        );
         assert_eq!(
             SafeCommand::new("rm").unwrap_err(),
             SecurityError::ProgramNotAllowed {
@@ -261,13 +278,19 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "test-support")]
+    #[test]
+    fn test_test_support_allows_mock_programs() {
+        assert!(SafeCommand::new("true").is_ok());
+        assert!(SafeCommand::new("echo").is_ok());
+    }
+
     #[test]
     fn test_dangerous_arguments_rejected() {
-        let cmd = SafeCommand::new("grub-mkconfig").unwrap();
+        let cmd = SafeCommand::new("/usr/sbin/grub-mkconfig").unwrap();
         assert!(cmd.clone().arg("-o").is_ok());
         assert!(cmd.clone().arg("/boot/grub/grub.cfg").is_ok());
 
-        // 注入测试
         assert!(cmd.clone().arg("test; rm -rf /").is_err());
         assert!(cmd.clone().arg("test | cat").is_err());
         assert!(cmd.clone().arg("test $(whoami)").is_err());

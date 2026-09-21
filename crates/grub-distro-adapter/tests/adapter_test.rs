@@ -54,11 +54,14 @@ fn test_ubuntu_adapter() {
     let profile = DistroProfile::parse_from_os_release(UBUNTU_OS_RELEASE, FirmwareType::Uefi);
     assert_eq!(profile.family, DistroFamily::DebianUbuntu);
     assert_eq!(profile.name, "Ubuntu 24.04 LTS");
-    assert_eq!(profile.update_command, "update-grub");
-    assert_eq!(profile.check_command, "grub-script-check");
+    assert!(profile.update_command.ends_with("update-grub"));
+    assert!(profile.update_command.starts_with('/'));
+    assert!(profile.check_command.ends_with("grub-script-check"));
+    assert!(profile.check_command.starts_with('/'));
     assert_eq!(profile.config_path, "/boot/grub/grub.cfg");
     assert_eq!(profile.grubenv_path, "/boot/grub/grubenv");
-    assert_eq!(profile.set_default_command, "grub-set-default");
+    assert!(profile.set_default_command.ends_with("grub-set-default"));
+    assert!(profile.set_default_command.starts_with('/'));
     assert!(profile.command_args.is_empty());
 }
 
@@ -67,30 +70,53 @@ fn test_arch_adapter() {
     let profile = DistroProfile::parse_from_os_release(ARCH_OS_RELEASE, FirmwareType::Uefi);
     assert_eq!(profile.family, DistroFamily::Arch);
     assert_eq!(profile.name, "Arch Linux");
-    assert_eq!(profile.update_command, "grub-mkconfig");
+    assert!(profile.update_command.ends_with("grub-mkconfig"));
+    assert!(profile.update_command.starts_with('/'));
     assert_eq!(profile.config_path, "/boot/grub/grub.cfg");
     assert_eq!(profile.grubenv_path, "/boot/grub/grubenv");
-    assert_eq!(profile.set_default_command, "grub-set-default");
+    assert!(profile.set_default_command.ends_with("grub-set-default"));
     assert_eq!(profile.command_args, vec!["-o", "/boot/grub/grub.cfg"]);
 }
 
 #[test]
-fn test_fedora_uefi_adapter() {
+fn test_fedora_uefi_adapter_prefers_boot_grub2() {
     let profile = DistroProfile::parse_from_os_release(FEDORA_OS_RELEASE, FirmwareType::Uefi);
     assert_eq!(profile.family, DistroFamily::FedoraRhel);
-    assert_eq!(profile.update_command, "grub2-mkconfig");
-    assert_eq!(profile.config_path, "/boot/efi/EFI/fedora/grub.cfg");
-    assert_eq!(
-        profile.command_args,
-        vec!["-o", "/boot/efi/EFI/fedora/grub.cfg"]
+    assert!(
+        profile.update_command.contains("grub2-mkconfig")
+            || profile.update_command.contains("grub-mkconfig")
     );
+    assert!(profile.update_command.starts_with('/'));
+    // 现代 Fedora/RHEL（含 UEFI+BLS）主配置位于 /boot/grub2/grub.cfg
+    assert_eq!(profile.config_path, "/boot/grub2/grub.cfg");
+    assert_eq!(profile.grubenv_path, "/boot/grub2/grubenv");
+    assert_eq!(profile.command_args, vec!["-o", "/boot/grub2/grub.cfg"]);
 }
 
 #[test]
 fn test_fedora_bios_adapter() {
     let profile = DistroProfile::parse_from_os_release(FEDORA_OS_RELEASE, FirmwareType::Bios);
     assert_eq!(profile.family, DistroFamily::FedoraRhel);
-    assert_eq!(profile.update_command, "grub2-mkconfig");
+    assert!(profile.update_command.starts_with('/'));
     assert_eq!(profile.config_path, "/boot/grub2/grub.cfg");
     assert_eq!(profile.command_args, vec!["-o", "/boot/grub2/grub.cfg"]);
+}
+
+#[test]
+fn test_all_commands_are_absolute_paths() {
+    for (os, fw) in [
+        (UBUNTU_OS_RELEASE, FirmwareType::Uefi),
+        (ARCH_OS_RELEASE, FirmwareType::Uefi),
+        (FEDORA_OS_RELEASE, FirmwareType::Uefi),
+        (FEDORA_OS_RELEASE, FirmwareType::Bios),
+    ] {
+        let profile = DistroProfile::parse_from_os_release(os, fw);
+        for cmd in [
+            profile.update_command.as_str(),
+            profile.check_command.as_str(),
+            profile.set_default_command.as_str(),
+        ] {
+            assert!(cmd.starts_with('/'), "命令必须是绝对路径: {cmd}");
+        }
+    }
 }
