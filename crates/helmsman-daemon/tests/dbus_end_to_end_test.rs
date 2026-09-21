@@ -239,3 +239,51 @@ async fn test_dbus_p2p_custom_entries_and_aliases() {
         "Ubuntu 6.8 (生产环境)"
     );
 }
+
+#[tokio::test]
+async fn test_dbus_p2p_install_theme_archive() {
+    let _guard = TEST_LOCK.lock().await;
+    set_mock_polkit_allow(Some(true));
+
+    let (_config_file, base, service, custom_manager) = get_p2p_test_env("install_theme");
+    let themes_dir = base.join("themes");
+    fs::create_dir_all(&themes_dir).unwrap();
+    let service = service.with_themes_dir(themes_dir.clone());
+
+    let (_server_conn, client_conn) =
+        setup_p2p_dbus_pair(Arc::new(service), Arc::new(custom_manager)).await;
+
+    let proxy = HelmsmanDbusAdapterProxy::builder(&client_conn)
+        .path(DBUS_OBJECT_PATH)
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+
+    // 1. 创建测试主题 zip 压缩包
+    let zip_path = base.join("theme_pkg.zip");
+    {
+        use std::io::Write;
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+
+        zip.start_file("theme.txt", options).unwrap();
+        zip.write_all(b"title-text: 'DBus Installed Theme'\n")
+            .unwrap();
+        zip.start_file("background.png", options).unwrap();
+        zip.write_all(b"dummy png").unwrap();
+        zip.finish().unwrap();
+    }
+
+    // 2. 通过 D-Bus Proxy 远程调用安装主题
+    let installed_path_str = proxy
+        .install_theme_archive(&zip_path.to_string_lossy(), "my_dbus_theme")
+        .await
+        .unwrap();
+
+    let installed_path = PathBuf::from(installed_path_str);
+    assert_eq!(installed_path, themes_dir.join("my_dbus_theme"));
+    assert!(installed_path.join("theme.txt").is_file());
+    assert!(installed_path.join("background.png").is_file());
+}

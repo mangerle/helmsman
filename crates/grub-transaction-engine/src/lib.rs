@@ -3,6 +3,7 @@ pub mod diff;
 pub mod disk;
 pub mod lock;
 pub mod snapshot;
+pub mod theme_archive;
 pub mod theme_extractor;
 
 pub use atomic::atomic_write;
@@ -13,7 +14,11 @@ pub use lock::{
     check_single_lock, default_system_locks,
 };
 pub use snapshot::{SnapshotMeta, create_snapshot, list_snapshots, restore_snapshot};
+pub use theme_archive::{
+    ArchiveFormat, MAX_ENTRIES_COUNT, MAX_SINGLE_FILE_SIZE, MAX_TOTAL_UNCOMPRESSED_SIZE,
+    detect_archive_format, extract_archive_to_dir, find_theme_root_in_dir,
+};
 pub use theme_extractor::{
-    ThemeSecurityError, extract_safe_entries, install_theme_directory, validate_entry_path,
-    validate_theme_directory, validate_theme_name,
+    ThemeSecurityError, extract_safe_entries, install_theme_directory, install_theme_from_archive,
+    validate_entry_path, validate_theme_directory, validate_theme_name,
 };

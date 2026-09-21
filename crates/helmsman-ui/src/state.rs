@@ -303,6 +303,12 @@ impl AppState {
         }
     }
 
+    /// 应用解压安装后的主题目录（自动拼接 theme.txt 路径）
+    pub fn apply_installed_theme(&mut self, theme_dir: &std::path::Path) {
+        let theme_txt = theme_dir.join("theme.txt");
+        self.set_grub_theme_path(Some(&theme_txt.to_string_lossy()));
+    }
+
     /// 获取当前配置的 GRUB 开机主题路径
     pub fn get_grub_theme_path(&self) -> Option<&str> {
         self.draft_config.get("GRUB_THEME")

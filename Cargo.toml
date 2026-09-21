@@ -36,6 +36,9 @@ zvariant = "5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
+tar = "0.4"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

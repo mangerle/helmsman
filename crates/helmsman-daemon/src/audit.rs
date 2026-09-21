@@ -11,6 +11,8 @@ pub enum AuditAction {
     SetDefaultFast,
     /// 还原历史快照
     RollbackSnapshot,
+    /// 安装主题压缩包
+    InstallTheme,
 }
 
 impl std::fmt::Display for AuditAction {
@@ -19,6 +21,7 @@ impl std::fmt::Display for AuditAction {
             AuditAction::ApplyChanges => write!(f, "提交配置修改事务"),
             AuditAction::SetDefaultFast => write!(f, "快速切换默认启动项"),
             AuditAction::RollbackSnapshot => write!(f, "还原历史快照"),
+            AuditAction::InstallTheme => write!(f, "安装主题压缩包"),
         }
     }
 }

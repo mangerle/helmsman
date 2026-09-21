@@ -25,6 +25,17 @@ pub enum ThemeSecurityError {
         path: PathBuf,
         reason: String,
     },
+    /// 不支持的主题压缩包格式
+    UnsupportedArchiveFormat { path: PathBuf },
+    /// 压缩包文件损坏或无法解析
+    ArchiveCorrupted { path: PathBuf, reason: String },
+    /// 压缩包解压超出安全配额限制 (解压炸弹防御)
+    ResourceLimitExceeded { reason: String },
+    /// 压缩包内包含不安全的文件类型 (如符号链接或设备节点)
+    InsecureEntryType {
+        entry_path: String,
+        entry_type: String,
+    },
 }
 
 impl fmt::Display for ThemeSecurityError {
@@ -62,6 +73,34 @@ impl fmt::Display for ThemeSecurityError {
                     action,
                     path.display(),
                     reason
+                )
+            }
+            ThemeSecurityError::UnsupportedArchiveFormat { path } => {
+                write!(
+                    f,
+                    "不支持的主题压缩包格式: {}。仅支持 .zip、.tar.gz 或 .tar 格式",
+                    path.display()
+                )
+            }
+            ThemeSecurityError::ArchiveCorrupted { path, reason } => {
+                write!(
+                    f,
+                    "主题压缩包 '{}' 损坏或格式错误: {}",
+                    path.display(),
+                    reason
+                )
+            }
+            ThemeSecurityError::ResourceLimitExceeded { reason } => {
+                write!(f, "主题包安全限制触发（防解压炸弹）: {}", reason)
+            }
+            ThemeSecurityError::InsecureEntryType {
+                entry_path,
+                entry_type,
+            } => {
+                write!(
+                    f,
+                    "拒绝提取包含潜在安全隐患的文件类型！条目: '{}'，类型: {}",
+                    entry_path, entry_type
                 )
             }
         }
@@ -264,4 +303,99 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), ThemeSecu
     }
 
     Ok(())
+}
+
+/// 临时沙箱守卫，利用 RAII 确保在退出作用域时自动清理临时解压目录
+struct TempSandboxGuard(PathBuf);
+
+impl Drop for TempSandboxGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// 从主题压缩包（.zip、.tar.gz 或 .tar）直接安全解压并安装至系统主题根目录
+///
+/// # 处理流程与安全保障
+/// 1. 创建隔离临时解压沙箱（带 RAII 自动析构清理）。
+/// 2. 解压压缩包并执行严密的防 Zip Slip、防解压炸弹与危险文件过滤。
+/// 3. 自适应识别包含 `theme.txt` 的实际主题目录（自动剥离顶层父目录包装）。
+/// 4. 自动推断或校验指定的主题名称。
+/// 5. 原子复制并安装至目标主题目录（如 `/boot/grub/themes/<theme_name>`）。
+pub fn install_theme_from_archive(
+    archive_path: &Path,
+    target_themes_root: &Path,
+    custom_theme_name: Option<&str>,
+) -> Result<PathBuf, ThemeSecurityError> {
+    use crate::theme_archive::{extract_archive_to_dir, find_theme_root_in_dir};
+
+    if !archive_path.is_file() {
+        return Err(ThemeSecurityError::IoError {
+            action: "读取压缩包文件".to_string(),
+            path: archive_path.to_path_buf(),
+            reason: "指定的主题压缩包文件不存在或不是普通文件".to_string(),
+        });
+    }
+
+    // 创建唯一命名的临时解压沙箱
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_sandbox = std::env::temp_dir().join(format!(
+        "helmsman_extract_{}_{}",
+        std::process::id(),
+        timestamp
+    ));
+    let _guard = TempSandboxGuard(temp_sandbox.clone());
+
+    // 1. 解压至临时沙箱
+    extract_archive_to_dir(archive_path, &temp_sandbox)?;
+
+    // 2. 探测包含 theme.txt 的真实主题根目录
+    let source_theme_dir = find_theme_root_in_dir(&temp_sandbox)?;
+
+    // 3. 确定最终主题名称
+    let final_name = match custom_theme_name {
+        Some(name) if !name.trim().is_empty() => name.trim().to_string(),
+        _ => {
+            if source_theme_dir != temp_sandbox {
+                source_theme_dir
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "custom_theme".to_string())
+            } else {
+                derive_theme_name_from_archive(archive_path)
+            }
+        }
+    };
+
+    validate_theme_name(&final_name)?;
+
+    // 4. 安装至系统目标根目录
+    let installed_path =
+        install_theme_directory(&source_theme_dir, target_themes_root, &final_name)?;
+
+    Ok(installed_path)
+}
+
+/// 从压缩包文件名推导默认主题名（剥离常见的压缩扩展名）
+fn derive_theme_name_from_archive(archive_path: &Path) -> String {
+    let filename = archive_path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "custom_theme".to_string());
+
+    let lower = filename.to_lowercase();
+    if let Some(stripped) = lower.strip_suffix(".tar.gz") {
+        filename[..stripped.len()].to_string()
+    } else if let Some(stripped) = lower.strip_suffix(".tgz") {
+        filename[..stripped.len()].to_string()
+    } else if let Some(stripped) = lower.strip_suffix(".zip") {
+        filename[..stripped.len()].to_string()
+    } else if let Some(stripped) = lower.strip_suffix(".tar") {
+        filename[..stripped.len()].to_string()
+    } else {
+        filename
+    }
 }

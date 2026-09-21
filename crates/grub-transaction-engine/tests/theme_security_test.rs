@@ -119,3 +119,157 @@ fn test_install_theme_directory_end_to_end() {
 
     let _ = fs::remove_dir_all(&temp_root);
 }
+
+#[test]
+fn test_install_theme_from_zip_archive_end_to_end() {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    let temp_root = std::env::temp_dir().join("helmsman_test_zip_theme");
+    let _ = fs::remove_dir_all(&temp_root);
+    fs::create_dir_all(&temp_root).unwrap();
+
+    let zip_path = temp_root.join("sample_theme.zip");
+    let target_themes_root = temp_root.join("themes_root");
+
+    // 1. 创建测试 ZIP 压缩包
+    {
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+
+        zip.start_file("theme.txt", options).unwrap();
+        zip.write_all(b"title-text: 'Sample Zip Theme'\n").unwrap();
+
+        zip.start_file("background.png", options).unwrap();
+        zip.write_all(b"dummy png content").unwrap();
+
+        zip.finish().unwrap();
+    }
+
+    // 2. 执行安装
+    let installed =
+        grub_transaction_engine::install_theme_from_archive(&zip_path, &target_themes_root, None)
+            .unwrap();
+
+    assert_eq!(installed, target_themes_root.join("sample_theme"));
+    assert!(installed.join("theme.txt").is_file());
+    assert!(installed.join("background.png").is_file());
+
+    let _ = fs::remove_dir_all(&temp_root);
+}
+
+#[test]
+fn test_install_theme_from_zip_nested_directory() {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    let temp_root = std::env::temp_dir().join("helmsman_test_zip_nested");
+    let _ = fs::remove_dir_all(&temp_root);
+    fs::create_dir_all(&temp_root).unwrap();
+
+    let zip_path = temp_root.join("archive_with_folder.zip");
+    let target_themes_root = temp_root.join("themes_root");
+
+    // 创建包含嵌套目录外壳的 ZIP (如 vimix-theme-master/theme.txt)
+    {
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+
+        zip.add_directory("vimix-dark-master/", options).unwrap();
+        zip.start_file("vimix-dark-master/theme.txt", options)
+            .unwrap();
+        zip.write_all(b"title-text: 'Nested Vimix'\n").unwrap();
+
+        zip.finish().unwrap();
+    }
+
+    // 执行安装，自适应识别并安装
+    let installed =
+        grub_transaction_engine::install_theme_from_archive(&zip_path, &target_themes_root, None)
+            .unwrap();
+
+    assert_eq!(installed, target_themes_root.join("vimix-dark-master"));
+    assert!(installed.join("theme.txt").is_file());
+
+    let _ = fs::remove_dir_all(&temp_root);
+}
+
+#[test]
+fn test_install_theme_from_tar_gz_end_to_end() {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use tar::Builder;
+
+    let temp_root = std::env::temp_dir().join("helmsman_test_targz_theme");
+    let _ = fs::remove_dir_all(&temp_root);
+    fs::create_dir_all(&temp_root).unwrap();
+
+    let tar_gz_path = temp_root.join("breeze.tar.gz");
+    let target_themes_root = temp_root.join("themes_root");
+
+    // 创建 .tar.gz 压缩包
+    {
+        let file = fs::File::create(&tar_gz_path).unwrap();
+        let enc = GzEncoder::new(file, Compression::default());
+        let mut tar = Builder::new(enc);
+
+        let mut header = tar::Header::new_gnu();
+        let content = b"title-text: 'Breeze GRUB'\n";
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, "theme.txt", &content[..])
+            .unwrap();
+
+        tar.finish().unwrap();
+    }
+
+    let installed = grub_transaction_engine::install_theme_from_archive(
+        &tar_gz_path,
+        &target_themes_root,
+        Some("breeze_custom"),
+    )
+    .unwrap();
+
+    assert_eq!(installed, target_themes_root.join("breeze_custom"));
+    assert!(installed.join("theme.txt").is_file());
+
+    let _ = fs::remove_dir_all(&temp_root);
+}
+
+#[test]
+fn test_zip_slip_interception_in_archive() {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    let temp_root = std::env::temp_dir().join("helmsman_test_zip_slip");
+    let _ = fs::remove_dir_all(&temp_root);
+    fs::create_dir_all(&temp_root).unwrap();
+
+    let zip_path = temp_root.join("evil_slip.zip");
+    let target_themes_root = temp_root.join("themes_root");
+
+    // 创建包含恶意相对穿越路径的 ZIP
+    {
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+
+        zip.start_file("../evil.sh", options).unwrap();
+        zip.write_all(b"echo pwned").unwrap();
+
+        zip.finish().unwrap();
+    }
+
+    let res =
+        grub_transaction_engine::install_theme_from_archive(&zip_path, &target_themes_root, None);
+
+    assert!(matches!(
+        res,
+        Err(ThemeSecurityError::PathTraversalDetected { .. })
+    ));
+
+    let _ = fs::remove_dir_all(&temp_root);
+}

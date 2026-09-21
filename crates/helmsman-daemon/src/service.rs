@@ -42,6 +42,8 @@ pub enum DaemonError {
     SnapshotNotFound { id: String },
     /// 快照还原失败
     SnapshotRestoreFailed { id: String, reason: String },
+    /// 主题安装失败
+    ThemeInstallFailed { reason: String },
 }
 
 impl fmt::Display for DaemonError {
@@ -85,6 +87,9 @@ impl fmt::Display for DaemonError {
             DaemonError::SnapshotRestoreFailed { id, reason } => {
                 write!(f, "还原快照 '{}' 失败，原因: {}", id, reason)
             }
+            DaemonError::ThemeInstallFailed { reason } => {
+                write!(f, "安装主题压缩包失败，原因: {}", reason)
+            }
         }
     }
 }
@@ -125,6 +130,8 @@ pub struct GrubService {
     pub distro_profile: DistroProfile,
     /// 需检测的包管理器锁描述符列表
     pub lock_descriptors: Vec<LockDescriptor>,
+    /// 主题存放根目录
+    pub themes_dir: PathBuf,
 }
 
 impl GrubService {
@@ -136,6 +143,7 @@ impl GrubService {
             backup_dir: PathBuf::from("/var/backups/grub-manager"),
             distro_profile,
             lock_descriptors: default_system_locks(),
+            themes_dir: PathBuf::from("/boot/grub/themes"),
         }
     }
 
@@ -145,18 +153,66 @@ impl GrubService {
         backup_dir: PathBuf,
         distro_profile: DistroProfile,
     ) -> Self {
+        let themes_dir = backup_dir.join("themes");
         Self {
             default_config_path,
             backup_dir,
             distro_profile,
             lock_descriptors: Vec::new(),
+            themes_dir,
         }
+    }
+
+    /// 链式配置主题根目录（用于测试隔离）
+    pub fn with_themes_dir(mut self, themes_dir: PathBuf) -> Self {
+        self.themes_dir = themes_dir;
+        self
     }
 
     /// 链式配置自定义锁描述符列表（用于测试或非标准环境）
     pub fn with_lock_descriptors(mut self, descriptors: Vec<LockDescriptor>) -> Self {
         self.lock_descriptors = descriptors;
         self
+    }
+
+    /// 从压缩包安全安装主题至系统主题目录
+    pub fn install_theme_archive(
+        &self,
+        archive_path: &Path,
+        theme_name: Option<&str>,
+    ) -> Result<PathBuf, DaemonError> {
+        let caller_uid = resolve_caller_uid();
+        let start_time = Instant::now();
+        let installed = grub_transaction_engine::install_theme_from_archive(
+            archive_path,
+            &self.themes_dir,
+            theme_name,
+        )
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            record_audit_event(&AuditEvent {
+                caller_uid,
+                action: AuditAction::InstallTheme,
+                reason: format!("主题安装失败: {}", err_msg),
+                snapshot_id: None,
+                success: false,
+                duration: start_time.elapsed(),
+                diff_summary: None,
+            });
+            DaemonError::ThemeInstallFailed { reason: err_msg }
+        })?;
+
+        record_audit_event(&AuditEvent {
+            caller_uid,
+            action: AuditAction::InstallTheme,
+            reason: format!("成功从压缩包安装主题至: {}", installed.display()),
+            snapshot_id: None,
+            success: true,
+            duration: start_time.elapsed(),
+            diff_summary: None,
+        });
+
+        Ok(installed)
     }
 
     /// 预览配置差异 (Diff)

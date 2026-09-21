@@ -378,6 +378,38 @@ impl HelmsmanDbusAdapter {
             .set_alias(entry_id, alias)
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
+
+    /// 安装主题压缩包至系统主题目录（受 Polkit apply-changes 权限保护）
+    pub async fn install_theme_archive(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        archive_path: &str,
+        theme_name: &str,
+    ) -> Result<String, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        if archive_path.trim().is_empty() {
+            return Err(HelmsmanDbusError::InvalidArgs(
+                "主题压缩包路径不能为空".to_string(),
+            ));
+        }
+
+        self.verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
+            .await?;
+
+        let opt_name = if theme_name.trim().is_empty() {
+            None
+        } else {
+            Some(theme_name.trim())
+        };
+
+        let installed_path = self
+            .service
+            .install_theme_archive(std::path::Path::new(archive_path), opt_name)
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+
+        Ok(installed_path.to_string_lossy().into_owned())
+    }
 }
 
 impl fmt::Display for SystemStatusDto {
