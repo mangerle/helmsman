@@ -9,3 +9,17 @@ ExecStart=/usr/libexec/helmsman-daemon
 User=root
 StandardOutput=journal
 StandardError=journal
+
+# 最小权限安全沙箱加固 (Security Hardening)
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_ADMIN
+ReadWritePaths=/etc/default/grub /boot /var/backups/grub-manager /run /tmp
+

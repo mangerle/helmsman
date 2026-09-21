@@ -83,4 +83,12 @@ proptest! {
 
         prop_assert_eq!(reparsed.get(&key), Some(val.as_str()));
     }
+
+    /// 模糊健壮性测试：对完全随机的任意畸形字节/字符串，解析器必须永远安全防御、杜绝 panic
+    #[test]
+    fn test_fuzz_arbitrary_string_no_panic(random_input in ".*") {
+        let parsed = parse_grub_config(&random_input);
+        let serialized = parsed.serialize();
+        let _ = parse_grub_config(&serialized);
+    }
 }
