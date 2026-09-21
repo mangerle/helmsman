@@ -2,8 +2,9 @@ use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_u
 use crate::executor::{SafeCommand, SecurityError};
 use grub_distro_adapter::DistroProfile;
 use grub_transaction_engine::{
-    DiffReport, LockDescriptor, SnapshotMeta, atomic_write, check_package_manager_locks,
-    create_snapshot, default_system_locks, generate_unified_diff, list_snapshots, restore_snapshot,
+    DiffReport, DiskSpaceError, LockDescriptor, SnapshotMeta, atomic_write, check_disk_space,
+    check_package_manager_locks, create_snapshot, default_system_locks, generate_unified_diff,
+    list_snapshots, restore_snapshot,
 };
 use std::error::Error;
 use std::fmt;
@@ -25,6 +26,8 @@ pub enum DaemonError {
     ConfigNotFound { path: PathBuf },
     /// 包管理器互斥锁冲突
     PackageManagerLocked { message: String },
+    /// 关键分区可用磁盘空间不足
+    DiskSpaceInsufficient(DiskSpaceError),
     /// 快照创建失败
     SnapshotFailed { reason: String },
     /// 原子写入失败
@@ -57,6 +60,9 @@ impl fmt::Display for DaemonError {
             }
             DaemonError::PackageManagerLocked { message } => {
                 write!(f, "无法执行引导修改，{}", message)
+            }
+            DaemonError::DiskSpaceInsufficient(err) => {
+                write!(f, "{}", err)
             }
             DaemonError::SnapshotFailed { reason } => {
                 write!(f, "创建配置快照失败，原因: {}", reason)
@@ -208,6 +214,17 @@ impl GrubService {
                     message: e.to_string(),
                 }
             })?;
+
+            // 检查关键分区可用磁盘空间（要求至少 10MB 冗余，防止引导文件截断损坏）
+            let min_disk_space_bytes = 10 * 1024 * 1024;
+            check_disk_space(&self.default_config_path, min_disk_space_bytes)
+                .map_err(DaemonError::DiskSpaceInsufficient)?;
+
+            let target_boot_path = Path::new(&self.distro_profile.config_path);
+            if target_boot_path.exists() {
+                check_disk_space(target_boot_path, min_disk_space_bytes)
+                    .map_err(DaemonError::DiskSpaceInsufficient)?;
+            }
 
             debug!("开始准备配置变更事务，原因: {}", reason);
 

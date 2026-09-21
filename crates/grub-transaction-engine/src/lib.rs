@@ -1,10 +1,12 @@
 pub mod atomic;
 pub mod diff;
+pub mod disk;
 pub mod lock;
 pub mod snapshot;
 
 pub use atomic::atomic_write;
 pub use diff::{DiffReport, generate_unified_diff};
+pub use disk::{DiskSpaceError, check_disk_space};
 pub use lock::{
     LockCheckStrategy, LockDescriptor, LockError, PackageManagerType, check_package_manager_locks,
     check_single_lock, default_system_locks,
