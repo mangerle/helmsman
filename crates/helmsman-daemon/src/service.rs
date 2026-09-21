@@ -1,3 +1,4 @@
+use crate::executor::{SafeCommand, SecurityError};
 use grub_distro_adapter::DistroProfile;
 use grub_transaction_engine::{
     DiffReport, LockDescriptor, SnapshotMeta, atomic_write, check_package_manager_locks,
@@ -7,7 +8,6 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tracing::{debug, info, warn};
 
 /// 特权后台服务领域错误枚举
@@ -27,6 +27,8 @@ pub enum DaemonError {
     SnapshotFailed { reason: String },
     /// 原子写入失败
     AtomicWriteFailed { reason: String },
+    /// 安全策略检查失败（非白名单程序或参数注入风险）
+    SecurityCheckFailed(SecurityError),
     /// 引导生成命令启动失败
     CommandLaunchFailed { command: String, reason: String },
     /// 快照列表读取失败
@@ -59,6 +61,9 @@ impl fmt::Display for DaemonError {
             }
             DaemonError::AtomicWriteFailed { reason } => {
                 write!(f, "原子写入新配置失败，原因: {}", reason)
+            }
+            DaemonError::SecurityCheckFailed(err) => {
+                write!(f, "{}", err)
             }
             DaemonError::CommandLaunchFailed { command, reason } => {
                 write!(f, "启动更新命令 '{}' 失败，原因: {}", command, reason)
@@ -210,9 +215,10 @@ impl GrubService {
 
     /// 校验生成的引导脚本语法（若系统支持）
     fn verify_grub_script_syntax(&self, config_path: &Path) -> Result<(), String> {
-        let mut cmd = Command::new(&self.distro_profile.check_command);
-        cmd.args(&self.distro_profile.check_command_args);
-        cmd.arg(config_path);
+        let cmd = SafeCommand::new(&self.distro_profile.check_command)
+            .and_then(|c| c.args(&self.distro_profile.check_command_args))
+            .and_then(|c| c.arg(&config_path.to_string_lossy()))
+            .map_err(|e| format!("安全检查拦截: {}", e))?;
 
         let output = cmd.output().map_err(|e| {
             format!(
@@ -235,8 +241,15 @@ impl GrubService {
         snapshot: &SnapshotMeta,
         options: &TransactionOptions,
     ) -> Result<TransactionResult, DaemonError> {
-        let mut cmd = Command::new(&self.distro_profile.update_command);
-        cmd.args(&self.distro_profile.command_args);
+        let cmd = match SafeCommand::new(&self.distro_profile.update_command)
+            .and_then(|c| c.args(&self.distro_profile.command_args))
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = restore_snapshot(snapshot);
+                return Err(DaemonError::SecurityCheckFailed(e));
+            }
+        };
 
         match cmd.output() {
             Ok(output) => {
@@ -362,8 +375,9 @@ impl GrubService {
 
         debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
 
-        let mut cmd = Command::new(&self.distro_profile.set_default_command);
-        cmd.arg(entry_id_or_title);
+        let cmd = SafeCommand::new(&self.distro_profile.set_default_command)
+            .and_then(|c| c.arg(entry_id_or_title))
+            .map_err(DaemonError::SecurityCheckFailed)?;
 
         match cmd.output() {
             Ok(output) => {
