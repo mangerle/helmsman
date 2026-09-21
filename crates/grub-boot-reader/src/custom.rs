@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use zvariant::Type;
 
 /// 自定义脚本标准头部定义
-pub const HELMSMAN_CUSTOM_HEADER: &str = "#!/bin/sh\nexec tail -n +3 $0\n# 本文件由 Helmsman 自动生成与维护，请勿手动修改头部声明\n";
+pub const HELMSMAN_CUSTOM_HEADER: &str =
+    "#!/bin/sh\nexec tail -n +3 $0\n# 本文件由 Helmsman 自动生成与维护，请勿手动修改头部声明\n";
 
 /// 自定义引导项类型常量
 pub mod entry_types {
