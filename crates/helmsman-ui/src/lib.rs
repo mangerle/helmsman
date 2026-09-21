@@ -13,5 +13,8 @@ pub use i18n::{Language, TextKey, detect_system_language, format_text, get_text}
 pub use impact::{ImpactAnalyzer, ImpactItem, ImpactReport};
 pub use preview::{MenuPreviewModel, PreviewEntry};
 pub use state::AppState;
-pub use theme::{FontConfig, ThemeMode, WindowConfig};
+pub use theme::{
+    ColorPalette, FontConfig, FontScale, ResolvedTheme, RgbaColor, SystemColorScheme, ThemeMode,
+    WindowConfig,
+};
 pub use validator::{RiskLevel, SafetyValidator, ValidationIssue};

@@ -1,4 +1,5 @@
 use crate::entry_view::{BootEntryItem, flatten_boot_entries};
+use crate::theme::{ColorPalette, FontScale, SystemColorScheme, ThemeMode};
 use grub_boot_reader::{BootEntry, MenuNode, parse_grub_cfg};
 use grub_config_parser::{GrubConfigFile, parse_grub_config};
 use grub_transaction_engine::{DiffReport, generate_unified_diff};
@@ -22,6 +23,10 @@ pub struct AppState {
     pub menu_nodes: Vec<MenuNode>,
     /// 当前在列表中高亮选中的条目路径（用于右侧属性检查器）
     pub selected_entry_path: Option<String>,
+    /// 界面视觉主题偏好
+    pub theme_mode: ThemeMode,
+    /// 界面字体缩放级别
+    pub font_scale: FontScale,
 }
 
 impl AppState {
@@ -45,6 +50,8 @@ impl AppState {
             draft_config,
             menu_nodes,
             selected_entry_path: first_entry,
+            theme_mode: ThemeMode::default(),
+            font_scale: FontScale::default(),
         }
     }
 
@@ -144,5 +151,31 @@ impl AppState {
             entries.extend(node.collect_entries());
         }
         entries.into_iter().find(|e| e.full_path == target_path)
+    }
+
+    /// 设置界面视觉主题模式
+    pub fn set_theme_mode(&mut self, mode: ThemeMode) {
+        self.theme_mode = mode;
+    }
+
+    /// 获取当前界面视觉主题模式
+    pub fn get_theme_mode(&self) -> ThemeMode {
+        self.theme_mode
+    }
+
+    /// 设置界面字体缩放级别
+    pub fn set_font_scale(&mut self, scale: FontScale) {
+        self.font_scale = scale;
+    }
+
+    /// 获取当前界面字体缩放级别
+    pub fn get_font_scale(&self) -> FontScale {
+        self.font_scale
+    }
+
+    /// 获取当前生效的语义化调色板
+    pub fn current_palette(&self, system_preference: SystemColorScheme) -> ColorPalette {
+        let resolved = self.theme_mode.resolve(system_preference);
+        ColorPalette::for_theme(resolved)
     }
 }
