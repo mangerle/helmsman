@@ -21,5 +21,6 @@ PrivateDevices=true
 NoNewPrivileges=true
 RestrictSUIDSGID=true
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_ADMIN
-ReadWritePaths=/etc/default/grub /boot /var/backups/grub-manager /run /tmp
+# 必须覆盖代码实际写入路径：默认配置、受管自定义脚本、别名注册表、引导分区、快照备份
+ReadWritePaths=/etc/default/grub /etc/grub.d /etc/helmsman /boot /var/backups/grub-manager /run /tmp
 
