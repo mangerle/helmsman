@@ -1,3 +1,4 @@
+use crate::entry_view::{BootEntryItem, flatten_boot_entries};
 use grub_boot_reader::{BootEntry, MenuNode, parse_grub_cfg};
 use grub_config_parser::{GrubConfigFile, parse_grub_config};
 use grub_transaction_engine::{DiffReport, generate_unified_diff};
@@ -50,6 +51,16 @@ impl AppState {
     /// 检查是否有未保存的更改
     pub fn has_unsaved_changes(&self) -> bool {
         self.original_config != self.draft_config
+    }
+
+    /// 放弃所有未保存修改，一键重置草稿为原始基准配置
+    pub fn reset_draft(&mut self) {
+        self.draft_config = self.original_config.clone();
+    }
+
+    /// 获取当前界面的扁平条目单选模型列表
+    pub fn get_entry_items(&self) -> Vec<BootEntryItem> {
+        flatten_boot_entries(&self.menu_nodes, self.get_default_entry())
     }
 
     /// 生成待保存的 Diff 差异报告
