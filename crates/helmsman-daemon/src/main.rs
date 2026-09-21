@@ -2,6 +2,7 @@ use helmsman_daemon::{GrubService, TransactionOptions};
 use std::env;
 use std::fs;
 use std::process;
+use tracing_subscriber::{EnvFilter, fmt};
 
 fn print_usage() {
     println!("Helmsman (舵手) 特权后台服务 (helmsman-daemon)");
@@ -127,6 +128,9 @@ fn handle_rollback(service: &GrubService, args: &[String]) {
 }
 
 fn main() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    fmt().with_env_filter(filter).init();
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         print_usage();

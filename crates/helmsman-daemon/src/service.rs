@@ -8,6 +8,7 @@ use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use tracing::{debug, info, warn};
 
 /// 特权后台服务领域错误枚举
 ///
@@ -156,6 +157,8 @@ impl GrubService {
             });
         }
 
+        debug!("开始准备配置变更事务，原因: {}", reason);
+
         let snapshot = create_snapshot(&self.default_config_path, &self.backup_dir, reason)
             .map_err(|e| DaemonError::SnapshotFailed {
                 reason: e.to_string(),
@@ -166,8 +169,10 @@ impl GrubService {
                 reason: e.to_string(),
             });
         }
+        debug!("新配置原子替换成功，待触发引导更新");
 
         if options.skip_command_execution {
+            info!("跳过引导命令执行（模拟测试模式），快照 ID: {}", snapshot.id);
             return Ok(TransactionResult {
                 success: true,
                 snapshot_id: snapshot.id,
@@ -194,6 +199,7 @@ impl GrubService {
                 let combined_log = format!("{}\n{}", stdout, stderr);
 
                 if output.status.success() {
+                    info!("引导更新命令执行成功，快照 ID: {}", snapshot.id);
                     Ok(TransactionResult {
                         success: true,
                         snapshot_id: snapshot.id.clone(),
@@ -201,6 +207,11 @@ impl GrubService {
                         error_message: None,
                     })
                 } else {
+                    warn!(
+                        "引导生成命令退出码非零 ({:?})，触发自动回滚，快照 ID: {}",
+                        output.status.code(),
+                        snapshot.id
+                    );
                     let rollback_err = restore_snapshot(snapshot)
                         .err()
                         .map(|e| format!("且自动回滚失败: {}", e))
@@ -219,6 +230,7 @@ impl GrubService {
                 }
             }
             Err(e) => {
+                warn!("启动更新命令失败，触发自动回滚，原因: {}", e);
                 let _ = restore_snapshot(snapshot);
                 Err(DaemonError::CommandLaunchFailed {
                     command: self.distro_profile.update_command.clone(),
@@ -248,7 +260,10 @@ impl GrubService {
         restore_snapshot(&target_snapshot).map_err(|e| DaemonError::SnapshotRestoreFailed {
             id: snapshot_id.to_string(),
             reason: e.to_string(),
-        })
+        })?;
+
+        info!("成功还原历史快照: {}", snapshot_id);
+        Ok(())
     }
 
     /// 列出所有可用快照

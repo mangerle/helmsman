@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::debug;
 
 /// 快照元数据
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +115,11 @@ pub fn create_snapshot(
     };
 
     meta.save_info(&snapshot_dir)?;
+    debug!(
+        "快照创建完成，ID: {}，目标: {}",
+        meta.id,
+        target_file.display()
+    );
     Ok(meta)
 }
 
@@ -134,6 +140,7 @@ pub fn restore_snapshot(meta: &SnapshotMeta) -> io::Result<()> {
         ));
     }
     fs::copy(&meta.backup_file, &meta.target_file)?;
+    debug!("快照恢复完成，目标: {}", meta.target_file.display());
     Ok(())
 }
 

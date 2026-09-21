@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 /// RAII 临时文件守卫，确保在任何异常、早期返回或 panic 场景下自动清理未提交的临时文件
 struct TempFileGuard {
@@ -65,10 +66,16 @@ pub fn atomic_write(target_path: &Path, content: &str) -> io::Result<()> {
         file.write_all(content.as_bytes())?;
         file.sync_all()?;
     }
+    debug!("临时文件写入并刷盘成功: {}", temp_path.display());
 
     // 执行原子替换
     fs::rename(&temp_path, target_path)?;
     guard.commit();
+    debug!(
+        "原子替换目标文件完成: {} -> {}",
+        temp_path.display(),
+        target_path.display()
+    );
 
     Ok(())
 }

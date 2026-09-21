@@ -13,3 +13,4 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
+tracing.workspace = true
