@@ -40,10 +40,10 @@ pub fn parse_line(line: &str) -> ConfigLine {
     if let Some(eq_pos) = trimmed_start.find('=') {
         let raw_key = &trimmed_start[..eq_pos].trim();
         // 允许可选的 export 前缀
-        let key = if let Some(stripped) = raw_key.strip_prefix("export ") {
-            stripped.trim()
+        let (has_export, key) = if let Some(stripped) = raw_key.strip_prefix("export ") {
+            (true, stripped.trim())
         } else {
-            *raw_key
+            (false, *raw_key)
         };
 
         // 验证键名合法性（必须符合 Shell 变量标识符规范：字母/下划线开头，后续为字母/数字/下划线）
@@ -52,12 +52,16 @@ pub fn parse_line(line: &str) -> ConfigLine {
         }
 
         let raw_val = trimmed_start[eq_pos + 1..].trim_start();
-        let (value, quote_type, trailing_comment) = parse_value_and_comment(raw_val);
+        let (value, quote_type, trailing_comment) = match parse_value_and_comment(raw_val) {
+            Some(res) => res,
+            None => return ConfigLine::Raw(line.to_string()),
+        };
 
         ConfigLine::Assignment {
             key: key.to_string(),
             value,
             quote_type,
+            has_export,
             prefix_whitespace,
             trailing_comment,
         }
@@ -67,38 +71,44 @@ pub fn parse_line(line: &str) -> ConfigLine {
 }
 
 /// 解析赋值右侧的值、引号类型及可能的行尾注释
-fn parse_value_and_comment(raw_val: &str) -> (String, QuoteType, Option<String>) {
+fn parse_value_and_comment(raw_val: &str) -> Option<(String, QuoteType, Option<String>)> {
     if raw_val.is_empty() {
-        return (String::new(), QuoteType::None, None);
+        return Some((String::new(), QuoteType::None, None));
     }
 
     // 双引号包裹
-    if let Some(stripped) = raw_val.strip_prefix('"')
-        && let Some(end_quote) = find_closing_quote(stripped, '"')
-    {
-        let value = stripped[..end_quote].to_string();
-        let remainder = stripped[end_quote + 1..].trim();
-        let trailing_comment = extract_trailing_comment(remainder);
-        return (value, QuoteType::Double, trailing_comment);
+    if let Some(stripped) = raw_val.strip_prefix('"') {
+        if let Some(end_quote) = find_closing_quote(stripped, '"') {
+            let value = stripped[..end_quote].to_string();
+            let remainder = stripped[end_quote + 1..].trim();
+            let trailing_comment = extract_trailing_comment(remainder);
+            return Some((value, QuoteType::Double, trailing_comment));
+        } else {
+            // 开头有双引号但未找到闭合双引号，属于语法未闭合
+            return None;
+        }
     }
 
     // 单引号包裹
-    if let Some(stripped) = raw_val.strip_prefix('\'')
-        && let Some(end_quote) = find_closing_quote(stripped, '\'')
-    {
-        let value = stripped[..end_quote].to_string();
-        let remainder = stripped[end_quote + 1..].trim();
-        let trailing_comment = extract_trailing_comment(remainder);
-        return (value, QuoteType::Single, trailing_comment);
+    if let Some(stripped) = raw_val.strip_prefix('\'') {
+        if let Some(end_quote) = find_closing_quote(stripped, '\'') {
+            let value = stripped[..end_quote].to_string();
+            let remainder = stripped[end_quote + 1..].trim();
+            let trailing_comment = extract_trailing_comment(remainder);
+            return Some((value, QuoteType::Single, trailing_comment));
+        } else {
+            // 开头有单引号但未找到闭合单引号，属于语法未闭合
+            return None;
+        }
     }
 
     // 无引号情况（处理行尾注释）
     if let Some(hash_pos) = raw_val.find('#') {
         let val_part = raw_val[..hash_pos].trim_end();
         let comment_part = raw_val[hash_pos..].to_string();
-        (val_part.to_string(), QuoteType::None, Some(comment_part))
+        Some((val_part.to_string(), QuoteType::None, Some(comment_part)))
     } else {
-        (raw_val.trim_end().to_string(), QuoteType::None, None)
+        Some((raw_val.trim_end().to_string(), QuoteType::None, None))
     }
 }
 

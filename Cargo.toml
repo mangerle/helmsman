@@ -30,6 +30,7 @@ helmsman-daemon = { path = "crates/helmsman-daemon", version = "0.1.0" }
 helmsman-ui = { path = "crates/helmsman-ui", version = "0.1.0" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+proptest = "1.6"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -33,6 +33,8 @@ pub enum ConfigLine {
         value: String,
         /// 原有引号类型
         quote_type: QuoteType,
+        /// 是否包含 export 前缀
+        has_export: bool,
         /// 键名前的前置空白字符
         prefix_whitespace: String,
         /// 行尾注释（包括 # 及其后内容）
@@ -53,6 +55,7 @@ impl ConfigLine {
                 key,
                 value,
                 quote_type,
+                has_export,
                 prefix_whitespace,
                 trailing_comment,
             } => {
@@ -61,7 +64,11 @@ impl ConfigLine {
                     QuoteType::Single => format!("'{}'", value),
                     QuoteType::Double => format!("\"{}\"", value),
                 };
-                let mut result = format!("{}{}{}{}", prefix_whitespace, key, "=", quoted);
+                let export_prefix = if *has_export { "export " } else { "" };
+                let mut result = format!(
+                    "{}{}{}{}{}",
+                    prefix_whitespace, export_prefix, key, "=", quoted
+                );
 
                 if let Some(comment) = trailing_comment {
                     result.push(' ');
@@ -127,6 +134,7 @@ impl GrubConfigFile {
             key: key.to_string(),
             value: value.to_string(),
             quote_type: QuoteType::Double,
+            has_export: false,
             prefix_whitespace: String::new(),
             trailing_comment: None,
         });
