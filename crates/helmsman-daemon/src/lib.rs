@@ -23,3 +23,6 @@ pub use polkit::set_mock_polkit_allow;
 pub use polkit::{PolicyKitAuthorityProxy, check_polkit_authorization};
 pub use server::run_dbus_server;
 pub use service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
+
+// 契约层再导出：便于既有测试与调用方平滑迁移
+pub use helmsman_client as client;

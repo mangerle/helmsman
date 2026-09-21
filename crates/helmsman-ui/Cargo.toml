@@ -17,4 +17,4 @@ grub-config-parser.workspace = true
 grub-boot-reader.workspace = true
 grub-distro-adapter.workspace = true
 grub-transaction-engine.workspace = true
-helmsman-daemon.workspace = true
+helmsman-client.workspace = true

@@ -23,6 +23,7 @@ grub-config-parser.workspace = true
 grub-boot-reader.workspace = true
 grub-distro-adapter.workspace = true
 grub-transaction-engine.workspace = true
+helmsman-client.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
@@ -34,3 +35,11 @@ tokio.workspace = true
 
 [dev-dependencies]
 zip.workspace = true
+
+[[test]]
+name = "dbus_end_to_end_test"
+required-features = ["test-support"]
+
+[[test]]
+name = "service_test"
+required-features = ["test-support"]

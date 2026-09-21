@@ -93,9 +93,7 @@ cargo build --release
 所有模块均包含完整的单元测试与集成测试套件：
 
 ```bash
-cargo test --workspace
-# helmsman-daemon 的 Polkit Mock 与测试命令白名单需显式启用 test-support：
-cargo test -p helmsman-daemon --features test-support
+cargo test --workspace --features helmsman-daemon/test-support
 ```
 
 ### 代码格式与静态检查
