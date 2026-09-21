@@ -1,5 +1,7 @@
+use crate::idle::IdleWatcher;
 use crate::service::{GrubService, TransactionOptions};
 use std::fmt;
+use std::sync::Arc;
 
 /// D-Bus 服务名称
 pub const DBUS_SERVICE_NAME: &str = "org.freedesktop.Helmsman";
@@ -109,17 +111,35 @@ pub trait HelmsmanDbusV1 {
 /// D-Bus 领域契约服务适配器
 pub struct HelmsmanDbusAdapter<'a> {
     service: &'a GrubService,
+    idle_watcher: Arc<IdleWatcher>,
 }
 
 impl<'a> HelmsmanDbusAdapter<'a> {
-    /// 创建适配器实例
+    /// 创建适配器实例（使用默认空闲观察器）
     pub fn new(service: &'a GrubService) -> Self {
-        Self { service }
+        Self {
+            service,
+            idle_watcher: Arc::new(IdleWatcher::new()),
+        }
+    }
+
+    /// 使用指定的空闲观察器创建适配器实例（便于依赖注入与生命周期协同）
+    pub fn with_idle_watcher(service: &'a GrubService, idle_watcher: Arc<IdleWatcher>) -> Self {
+        Self {
+            service,
+            idle_watcher,
+        }
+    }
+
+    /// 获取关联的空闲观察器引用
+    pub fn idle_watcher(&self) -> &Arc<IdleWatcher> {
+        &self.idle_watcher
     }
 }
 
 impl<'a> HelmsmanDbusV1 for HelmsmanDbusAdapter<'a> {
     fn get_system_status(&self) -> Result<SystemStatusDto, String> {
+        self.idle_watcher.touch();
         let profile = &self.service.distro_profile;
         Ok(SystemStatusDto {
             distro_name: profile.name.clone(),
@@ -136,6 +156,7 @@ impl<'a> HelmsmanDbusV1 for HelmsmanDbusAdapter<'a> {
     }
 
     fn list_snapshots(&self) -> Result<Vec<SnapshotDto>, String> {
+        self.idle_watcher.touch();
         let snapshots = self
             .service
             .get_available_snapshots()
@@ -155,6 +176,7 @@ impl<'a> HelmsmanDbusV1 for HelmsmanDbusAdapter<'a> {
     }
 
     fn preview_changes(&self, new_config: &str) -> Result<DiffResultDto, String> {
+        self.idle_watcher.touch();
         let report = self
             .service
             .preview_diff(new_config)
@@ -169,6 +191,7 @@ impl<'a> HelmsmanDbusV1 for HelmsmanDbusAdapter<'a> {
     }
 
     fn set_default_entry(&self, entry_id_or_title: &str) -> Result<(), String> {
+        self.idle_watcher.touch();
         if entry_id_or_title.trim().is_empty() {
             return Err("启动项标识或标题不能为空".to_string());
         }
@@ -179,6 +202,7 @@ impl<'a> HelmsmanDbusV1 for HelmsmanDbusAdapter<'a> {
     }
 
     fn apply_changes(&self, new_config: &str, reason: &str) -> Result<ApplyResultDto, String> {
+        let _guard = self.idle_watcher.enter_busy();
         if new_config.trim().is_empty() {
             return Err("提交的配置内容不能为空".to_string());
         }
@@ -198,6 +222,7 @@ impl<'a> HelmsmanDbusV1 for HelmsmanDbusAdapter<'a> {
     }
 
     fn rollback_snapshot(&self, snapshot_id: &str) -> Result<(), String> {
+        let _guard = self.idle_watcher.enter_busy();
         if snapshot_id.trim().is_empty() {
             return Err("快照 ID 不能为空".to_string());
         }
@@ -299,5 +324,40 @@ mod tests {
 
         let empty_rollback = adapter.rollback_snapshot("");
         assert!(empty_rollback.is_err());
+    }
+
+    #[test]
+    fn test_dbus_adapter_idle_watcher_integration() {
+        let (config_file, backup_dir) = get_dbus_test_dir("idle_integration");
+        fs::write(&config_file, "GRUB_DEFAULT=0\n").unwrap();
+
+        let distro_profile = DistroProfile {
+            family: DistroFamily::DebianUbuntu,
+            name: "Ubuntu Linux".to_string(),
+            firmware: FirmwareType::Uefi,
+            config_path: "/boot/grub/grub.cfg".to_string(),
+            update_command: "update-grub".to_string(),
+            command_args: Vec::new(),
+            check_command: "grub-script-check".to_string(),
+            check_command_args: Vec::new(),
+            grubenv_path: "/boot/grub/grubenv".to_string(),
+            set_default_command: "grub-set-default".to_string(),
+        };
+
+        let service = GrubService::new_with_paths(config_file, backup_dir, distro_profile);
+        let watcher = Arc::new(IdleWatcher::new());
+        let adapter = HelmsmanDbusAdapter::with_idle_watcher(&service, Arc::clone(&watcher));
+
+        // 模拟 120 秒前活跃
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        watcher.set_last_active_for_test(now - 120);
+        assert!(watcher.is_idle_timeout(60));
+
+        // 调用 get_system_status 应当触发 touch() 刷新活跃状态并解除超时
+        let _ = adapter.get_system_status().unwrap();
+        assert!(!watcher.is_idle_timeout(60));
     }
 }

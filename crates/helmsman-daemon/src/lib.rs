@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod dbus_api;
 pub mod executor;
+pub mod idle;
 pub mod service;
 
 pub use audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
@@ -9,4 +10,5 @@ pub use dbus_api::{
     HelmsmanDbusAdapter, HelmsmanDbusV1, SnapshotDto, SystemStatusDto, polkit_actions,
 };
 pub use executor::{SafeCommand, SecurityError};
+pub use idle::{BusyGuard, IdleWatcher};
 pub use service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
