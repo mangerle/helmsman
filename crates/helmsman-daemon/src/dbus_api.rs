@@ -1,10 +1,10 @@
-// use crate::custom_manager::CustomManager;
+use crate::custom_manager::CustomManager;
 use crate::idle::IdleWatcher;
 use crate::polkit::check_polkit_authorization;
 use crate::service::{GrubService, TransactionOptions};
-// use grub_boot_reader::CustomBootEntry;
+use grub_boot_reader::CustomBootEntry;
 use serde::{Deserialize, Serialize};
-// use std::collections::HashMap;
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use zbus::DBusError;
@@ -113,7 +113,7 @@ pub struct ApplyResultDto {
 /// D-Bus 领域契约服务适配器
 pub struct HelmsmanDbusAdapter {
     service: Arc<GrubService>,
-    // custom_manager: Arc<CustomManager>,
+    custom_manager: Arc<CustomManager>,
     idle_watcher: Arc<IdleWatcher>,
     options: TransactionOptions,
 }
@@ -123,7 +123,7 @@ impl HelmsmanDbusAdapter {
     pub fn new(service: Arc<GrubService>) -> Self {
         Self {
             service,
-            // custom_manager: Arc::new(CustomManager::new_system_default()),
+            custom_manager: Arc::new(CustomManager::new_system_default()),
             idle_watcher: Arc::new(IdleWatcher::new()),
             options: TransactionOptions::default(),
         }
@@ -133,17 +133,17 @@ impl HelmsmanDbusAdapter {
     pub fn with_idle_watcher(service: Arc<GrubService>, idle_watcher: Arc<IdleWatcher>) -> Self {
         Self {
             service,
-            // custom_manager: Arc::new(CustomManager::new_system_default()),
+            custom_manager: Arc::new(CustomManager::new_system_default()),
             idle_watcher,
             options: TransactionOptions::default(),
         }
     }
 
-    // /// 链式配置自定义引导项管理器（用于测试隔离）
-    // pub fn with_custom_manager(mut self, manager: Arc<CustomManager>) -> Self {
-    //     self.custom_manager = manager;
-    //     self
-    // }
+    /// 链式配置自定义引导项管理器（用于测试隔离）
+    pub fn with_custom_manager(mut self, manager: Arc<CustomManager>) -> Self {
+        self.custom_manager = manager;
+        self
+    }
 
     /// 链式配置事务执行选项（用于测试模拟或演练）
     pub fn with_options(mut self, options: TransactionOptions) -> Self {
@@ -323,61 +323,61 @@ impl HelmsmanDbusAdapter {
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
-    // /// 读取受管的自定义引导项列表 (/etc/grub.d/41_helmsman_custom)
-    // pub async fn get_custom_entries(&self) -> Result<Vec<CustomBootEntry>, HelmsmanDbusError> {
-    //     self.idle_watcher.touch();
-    //     self.custom_manager
-    //         .load_custom_entries()
-    //         .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
-    // }
+    /// 读取受管的自定义引导项列表 (/etc/grub.d/41_helmsman_custom)
+    pub async fn get_custom_entries(&self) -> Result<Vec<CustomBootEntry>, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.custom_manager
+            .load_custom_entries()
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+    }
 
-    // /// 提交自定义引导项修改（受 Polkit apply-changes 权限保护）
-    // pub async fn apply_custom_entries(
-    //     &self,
-    //     #[zbus(header)] header: Header<'_>,
-    //     #[zbus(connection)] connection: &zbus::Connection,
-    //     entries: Vec<CustomBootEntry>,
-    //     reason: &str,
-    // ) -> Result<ApplyResultDto, HelmsmanDbusError> {
-    //     let _guard = self.idle_watcher.enter_busy();
-    //     self.verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
-    //         .await?;
+    /// 提交自定义引导项修改（受 Polkit apply-changes 权限保护）
+    pub async fn apply_custom_entries(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        entries: Vec<CustomBootEntry>,
+        reason: &str,
+    ) -> Result<ApplyResultDto, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        self.verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
+            .await?;
 
-    //     let result = self
-    //         .custom_manager
-    //         .save_custom_entries(&self.service, &entries, reason, &self.options)
-    //         .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        let result = self
+            .custom_manager
+            .save_custom_entries(&self.service, &entries, reason, &self.options)
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
-    //     Ok(ApplyResultDto {
-    //         success: result.success,
-    //         snapshot_id: result.snapshot_id,
-    //         log_output: result.log_output,
-    //         error_message: result.error_message.unwrap_or_default(),
-    //     })
-    // }
+        Ok(ApplyResultDto {
+            success: result.success,
+            snapshot_id: result.snapshot_id,
+            log_output: result.log_output,
+            error_message: result.error_message.unwrap_or_default(),
+        })
+    }
 
-    // /// 获取所有条目别名映射表
-    // pub async fn get_entry_aliases(&self) -> Result<HashMap<String, String>, HelmsmanDbusError> {
-    //     self.idle_watcher.touch();
-    //     Ok(self.custom_manager.load_aliases())
-    // }
+    /// 获取所有条目别名映射表
+    pub async fn get_entry_aliases(&self) -> Result<HashMap<String, String>, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        Ok(self.custom_manager.load_aliases())
+    }
 
-    // /// 设置条目别名映射（受 Polkit set-default 权限保护）
-    // pub async fn set_entry_alias(
-    //     &self,
-    //     #[zbus(header)] header: Header<'_>,
-    //     #[zbus(connection)] connection: &zbus::Connection,
-    //     entry_id: &str,
-    //     alias: &str,
-    // ) -> Result<(), HelmsmanDbusError> {
-    //     self.idle_watcher.touch();
-    //     self.verify_polkit(header, connection, polkit_actions::ACTION_SET_DEFAULT)
-    //         .await?;
+    /// 设置条目别名映射（受 Polkit set-default 权限保护）
+    pub async fn set_entry_alias(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        entry_id: &str,
+        alias: &str,
+    ) -> Result<(), HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit(header, connection, polkit_actions::ACTION_SET_DEFAULT)
+            .await?;
 
-    //     self.custom_manager
-    //         .set_alias(entry_id, alias)
-    //         .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
-    // }
+        self.custom_manager
+            .set_alias(entry_id, alias)
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+    }
 }
 
 impl fmt::Display for SystemStatusDto {

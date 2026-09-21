@@ -13,3 +13,5 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
+serde.workspace = true
+zvariant.workspace = true

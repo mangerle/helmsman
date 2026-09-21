@@ -1,8 +1,8 @@
-// use grub_boot_reader::CustomBootEntry;
+use grub_boot_reader::CustomBootEntry;
 use grub_distro_adapter::{DistroFamily, DistroProfile, FirmwareType};
 use helmsman_daemon::{
-    /* CustomManager, */ DBUS_OBJECT_PATH, GrubService, HelmsmanDbusAdapter,
-    HelmsmanDbusAdapterProxy, TransactionOptions, set_mock_polkit_allow,
+    CustomManager, DBUS_OBJECT_PATH, GrubService, HelmsmanDbusAdapter, HelmsmanDbusAdapterProxy,
+    TransactionOptions, set_mock_polkit_allow,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use zbus::connection;
 
-fn get_p2p_test_env(name: &str) -> (PathBuf, PathBuf, GrubService) {
+fn get_p2p_test_env(name: &str) -> (PathBuf, PathBuf, GrubService, CustomManager) {
     let base = std::env::temp_dir()
         .join("helmsman_p2p_dbus_test")
         .join(name);
@@ -19,8 +19,8 @@ fn get_p2p_test_env(name: &str) -> (PathBuf, PathBuf, GrubService) {
 
     let config_file = base.join("default_grub");
     let backup_dir = base.join("backups");
-    // let custom_script = base.join("41_helmsman_custom");
-    // let aliases_file = base.join("aliases.json");
+    let custom_script = base.join("41_helmsman_custom");
+    let aliases_file = base.join("aliases.json");
     fs::create_dir_all(&backup_dir).unwrap();
 
     fs::write(&config_file, "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n").unwrap();
@@ -40,13 +40,13 @@ fn get_p2p_test_env(name: &str) -> (PathBuf, PathBuf, GrubService) {
 
     let service =
         GrubService::new_with_paths(config_file.clone(), backup_dir.clone(), distro_profile);
-    // let custom_manager = CustomManager::new_with_paths(custom_script, aliases_file, backup_dir);
-    (config_file, base, service)
+    let custom_manager = CustomManager::new_with_paths(custom_script, aliases_file, backup_dir);
+    (config_file, base, service, custom_manager)
 }
 
 async fn setup_p2p_dbus_pair(
     service: Arc<GrubService>,
-    // custom_manager: Arc<CustomManager>,
+    custom_manager: Arc<CustomManager>,
 ) -> (connection::Connection, connection::Connection) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -58,7 +58,7 @@ async fn setup_p2p_dbus_pair(
             ..Default::default()
         };
         let adapter = HelmsmanDbusAdapter::new(service)
-            // .with_custom_manager(custom_manager)
+            .with_custom_manager(custom_manager)
             .with_options(options);
         let guid = zbus::Guid::generate();
         connection::Builder::tcp_stream(server_stream)
@@ -90,8 +90,9 @@ async fn test_dbus_p2p_end_to_end_authorized_apply() {
     let _guard = TEST_LOCK.lock().await;
     set_mock_polkit_allow(Some(true));
 
-    let (config_file, _base, service) = get_p2p_test_env("authorized_apply");
-    let (_server_conn, client_conn) = setup_p2p_dbus_pair(Arc::new(service)).await;
+    let (config_file, _base, service, custom_manager) = get_p2p_test_env("authorized_apply");
+    let (_server_conn, client_conn) =
+        setup_p2p_dbus_pair(Arc::new(service), Arc::new(custom_manager)).await;
 
     // 1. 客户端通过自动派生的 HelmsmanDbusAdapterProxy 发起 D-Bus 远程调用
     let proxy = HelmsmanDbusAdapterProxy::builder(&client_conn)
@@ -139,9 +140,10 @@ async fn test_dbus_p2p_end_to_end_not_authorized_blocked() {
     let _guard = TEST_LOCK.lock().await;
     set_mock_polkit_allow(Some(false));
 
-    let (config_file, _base, service) = get_p2p_test_env("unauthorized_blocked");
+    let (config_file, _base, service, custom_manager) = get_p2p_test_env("unauthorized_blocked");
     let original_content = fs::read_to_string(&config_file).unwrap();
-    let (_server_conn, client_conn) = setup_p2p_dbus_pair(Arc::new(service)).await;
+    let (_server_conn, client_conn) =
+        setup_p2p_dbus_pair(Arc::new(service), Arc::new(custom_manager)).await;
 
     let proxy = HelmsmanDbusAdapterProxy::builder(&client_conn)
         .path(DBUS_OBJECT_PATH)
@@ -171,5 +173,69 @@ async fn test_dbus_p2p_end_to_end_not_authorized_blocked() {
     assert_eq!(current_content, original_content);
 }
 
-// #[tokio::test]
-// async fn test_dbus_p2p_custom_entries_and_aliases() { ... }
+#[tokio::test]
+async fn test_dbus_p2p_custom_entries_and_aliases() {
+    let _guard = TEST_LOCK.lock().await;
+    set_mock_polkit_allow(Some(true));
+
+    let (_config_file, _base, service, custom_manager) = get_p2p_test_env("custom_and_aliases");
+    let custom_script_path = custom_manager.custom_script_path.clone();
+    let (_server_conn, client_conn) =
+        setup_p2p_dbus_pair(Arc::new(service), Arc::new(custom_manager)).await;
+
+    let proxy = HelmsmanDbusAdapterProxy::builder(&client_conn)
+        .path(DBUS_OBJECT_PATH)
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+
+    // 1. 获取初始自定义列表（应为空）
+    let initial_custom = proxy.get_custom_entries().await.unwrap();
+    assert!(initial_custom.is_empty());
+
+    // 2. 通过 D-Bus 提交自定义条目（ISO 镜像与 Windows 链式加载）
+    let iso_entry = CustomBootEntry::new_iso_boot(
+        "ubuntu_iso",
+        "Ubuntu Live ISO",
+        "/boot/iso/ubuntu.iso",
+        "UUID-1122",
+        "nomodeset",
+    );
+    let win_entry = CustomBootEntry::new_chainloader(
+        "win11",
+        "Windows 11",
+        "/EFI/Microsoft/Boot/bootmgfw.efi",
+        "UUID-3344",
+    );
+
+    let apply_res = proxy
+        .apply_custom_entries(vec![iso_entry, win_entry], "添加自定义 ISO 与 Windows")
+        .await
+        .unwrap();
+    assert!(apply_res.success);
+
+    // 3. 验证底层脚本文件确实被生成
+    let script_content = fs::read_to_string(&custom_script_path).unwrap();
+    assert!(script_content.contains("Ubuntu Live ISO"));
+    assert!(script_content.contains("Windows 11"));
+
+    // 4. 重新查询验证
+    let reloaded_custom = proxy.get_custom_entries().await.unwrap();
+    assert_eq!(reloaded_custom.len(), 2);
+    assert_eq!(reloaded_custom[0].id, "ubuntu_iso");
+    assert_eq!(reloaded_custom[1].id, "win11");
+
+    // 5. 设置条目别名
+    proxy
+        .set_entry_alias("gnulinux-6.8", "Ubuntu 6.8 (生产环境)")
+        .await
+        .unwrap();
+
+    // 6. 获取所有别名并验证
+    let aliases = proxy.get_entry_aliases().await.unwrap();
+    assert_eq!(
+        aliases.get("gnulinux-6.8").unwrap(),
+        "Ubuntu 6.8 (生产环境)"
+    );
+}

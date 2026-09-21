@@ -1,18 +1,18 @@
-use crate::entry_view::{BootEntryItem, flatten_boot_entries};
+use crate::entry_view::{BootEntryItem, flatten_boot_entries_with_options};
 use crate::theme::{ColorPalette, FontScale, SystemColorScheme, ThemeMode};
-use grub_boot_reader::{BootEntry, MenuNode, parse_grub_cfg};
+use grub_boot_reader::{BootEntry, CustomBootEntry, MenuNode, parse_grub_cfg};
 use grub_config_parser::{GrubConfigFile, parse_grub_config};
 use grub_transaction_engine::{DiffReport, generate_unified_diff};
+use std::collections::HashMap;
 
 /// 前端主应用状态机
 ///
 /// # 设计原理
-/// - **实现初衷**：采用只读基准 (`original_config`) 与用户操作草稿 (`draft_config`) 的双缓冲机制。
-///   普通用户在界面上的任何频繁操作（如拖拽、调整倒计时、切换开关）均在内存草稿中即时生效，
-///   完全杜绝在未确认前触发任何高危的磁盘特权写入。
-/// - **核心优势**：状态隔离清晰，可毫秒级判定 `has_unsaved_changes()` 并即时生成 Unified Diff；
-///   支持用户随时一键“放弃修改”还原至初始加载状态。
-/// - **代价与局限**：草稿状态驻留于客户端进程内存中，若客户端意外崩溃未保存的草稿会丢失（通过脏状态退出拦截保护）。
+/// - **实现初衷**：采用只读基准与用户操作草稿的双缓冲机制。普通用户在界面上的任何频繁操作
+///   （如添加/删除自定义条目、为条目重命名、调整倒计时、切换原生过滤开关）均在内存草稿中即时生效，
+///   完全杜绝在确认提交前触发任何高危的磁盘特权写入。
+/// - **核心优势**：状态隔离清晰，支持一键放弃修改恢复初始状态；
+///   将自定义脚本草稿、条目别名映射与原生 GRUB 过滤开关全面纳入统一状态机纳管。
 #[derive(Debug, Clone)]
 pub struct AppState {
     /// 磁盘原始配置（只读基准）
@@ -21,6 +21,12 @@ pub struct AppState {
     pub draft_config: GrubConfigFile,
     /// 当前系统引导项树
     pub menu_nodes: Vec<MenuNode>,
+    /// 原始自定义引导条目列表
+    pub original_custom_entries: Vec<CustomBootEntry>,
+    /// 用户编辑中的自定义引导条目草稿
+    pub draft_custom_entries: Vec<CustomBootEntry>,
+    /// 条目友好别名映射表 (entry_id -> alias)
+    pub aliases: HashMap<String, String>,
     /// 当前在列表中高亮选中的条目路径（用于右侧属性检查器）
     pub selected_entry_path: Option<String>,
     /// 界面视觉主题偏好
@@ -49,25 +55,66 @@ impl AppState {
             original_config,
             draft_config,
             menu_nodes,
+            original_custom_entries: Vec::new(),
+            draft_custom_entries: Vec::new(),
+            aliases: HashMap::new(),
             selected_entry_path: first_entry,
             theme_mode: ThemeMode::default(),
             font_scale: FontScale::default(),
         }
     }
 
-    /// 检查是否有未保存的更改
+    /// 注入自定义引导项列表
+    pub fn with_custom_entries(mut self, entries: Vec<CustomBootEntry>) -> Self {
+        self.original_custom_entries = entries.clone();
+        self.draft_custom_entries = entries;
+        self
+    }
+
+    /// 注入条目别名映射表
+    pub fn with_aliases(mut self, aliases: HashMap<String, String>) -> Self {
+        self.aliases = aliases;
+        self
+    }
+
+    /// 检查是否有未保存的更改（包括常规配置与自定义引导项）
     pub fn has_unsaved_changes(&self) -> bool {
         self.original_config != self.draft_config
+            || self.original_custom_entries != self.draft_custom_entries
+    }
+
+    /// 检查自定义引导项是否有草稿变更
+    pub fn has_custom_entry_changes(&self) -> bool {
+        self.original_custom_entries != self.draft_custom_entries
     }
 
     /// 放弃所有未保存修改，一键重置草稿为原始基准配置
     pub fn reset_draft(&mut self) {
         self.draft_config = self.original_config.clone();
+        self.draft_custom_entries = self.original_custom_entries.clone();
     }
 
-    /// 获取当前界面的扁平条目单选模型列表
+    /// 获取当前界面的扁平条目单选模型列表（结合别名、过滤与自定义项）
     pub fn get_entry_items(&self) -> Vec<BootEntryItem> {
-        flatten_boot_entries(&self.menu_nodes, self.get_default_entry())
+        let filter_recovery = self.is_recovery_disabled();
+        let mut items = flatten_boot_entries_with_options(
+            &self.menu_nodes,
+            self.get_default_entry(),
+            &self.aliases,
+            filter_recovery,
+        );
+
+        // 追加已启用的自定义条目
+        for custom in &self.draft_custom_entries {
+            if custom.enabled {
+                items.push(BootEntryItem::from_custom_entry(
+                    custom,
+                    self.get_default_entry(),
+                ));
+            }
+        }
+
+        items
     }
 
     /// 生成待保存的 Diff 差异报告
@@ -92,7 +139,7 @@ impl AppState {
         self.draft_config.get("GRUB_DEFAULT") == Some("saved")
     }
 
-    /// 启用 saved 快速引导模式（将 GRUB_DEFAULT 设为 saved，并启用 GRUB_SAVEDEFAULT）
+    /// 启用 saved 快速引导模式
     pub fn enable_saved_default_mode(&mut self) {
         self.draft_config.set("GRUB_DEFAULT", "saved");
         self.draft_config.set("GRUB_SAVEDEFAULT", "true");
@@ -131,6 +178,73 @@ impl AppState {
         } else {
             self.draft_config.set("GRUB_DISABLE_OS_PROBER", "true");
         }
+    }
+
+    /// 检查是否禁用了恢复模式条目
+    pub fn is_recovery_disabled(&self) -> bool {
+        self.draft_config.get("GRUB_DISABLE_RECOVERY") == Some("true")
+    }
+
+    /// 设置是否禁用恢复模式条目（零侵入隐藏恢复模式内核）
+    pub fn set_recovery_disabled(&mut self, disabled: bool) {
+        if disabled {
+            self.draft_config.set("GRUB_DISABLE_RECOVERY", "true");
+        } else {
+            self.draft_config.remove("GRUB_DISABLE_RECOVERY");
+        }
+    }
+
+    /// 检查是否禁用了二级子菜单折叠（拉平菜单）
+    pub fn is_submenu_disabled(&self) -> bool {
+        self.draft_config.get("GRUB_DISABLE_SUBMENU") == Some("y")
+    }
+
+    /// 设置是否禁用二级子菜单（零侵入控制菜单折叠与平铺）
+    pub fn set_submenu_disabled(&mut self, disabled: bool) {
+        if disabled {
+            self.draft_config.set("GRUB_DISABLE_SUBMENU", "y");
+        } else {
+            self.draft_config.remove("GRUB_DISABLE_SUBMENU");
+        }
+    }
+
+    /// 添加自定义引导项草稿
+    pub fn add_custom_entry(&mut self, entry: CustomBootEntry) {
+        self.draft_custom_entries.push(entry);
+    }
+
+    /// 移除自定义引导项草稿
+    pub fn remove_custom_entry(&mut self, id: &str) -> bool {
+        let initial_len = self.draft_custom_entries.len();
+        self.draft_custom_entries.retain(|e| e.id != id);
+        self.draft_custom_entries.len() < initial_len
+    }
+
+    /// 更新自定义引导项草稿
+    pub fn update_custom_entry(&mut self, entry: CustomBootEntry) -> bool {
+        for item in &mut self.draft_custom_entries {
+            if item.id == entry.id {
+                *item = entry;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 设置条目友好别名
+    pub fn set_entry_alias(&mut self, id_or_title: &str, alias: &str) {
+        let trimmed = alias.trim();
+        if trimmed.is_empty() {
+            self.aliases.remove(id_or_title);
+        } else {
+            self.aliases
+                .insert(id_or_title.to_string(), trimmed.to_string());
+        }
+    }
+
+    /// 获取条目友好别名
+    pub fn get_entry_alias(&self, id_or_title: &str) -> Option<&str> {
+        self.aliases.get(id_or_title).map(|s| s.as_str())
     }
 
     /// 设置菜单分辨率
@@ -179,7 +293,7 @@ impl AppState {
         ColorPalette::for_theme(resolved)
     }
 
-    /// 设置 GRUB 开机主题描述文件绝对路径 (GRUB_THEME)
+    /// 设置 GRUB 开机主题描述文件绝对路径
     pub fn set_grub_theme_path(&mut self, path: Option<&str>) {
         match path {
             Some(p) if !p.trim().is_empty() => self.draft_config.set("GRUB_THEME", p.trim()),
@@ -194,7 +308,7 @@ impl AppState {
         self.draft_config.get("GRUB_THEME")
     }
 
-    /// 设置 GRUB 开机背景壁纸路径 (GRUB_BACKGROUND)
+    /// 设置 GRUB 开机背景壁纸路径
     pub fn set_grub_background_path(&mut self, path: Option<&str>) {
         match path {
             Some(p) if !p.trim().is_empty() => self.draft_config.set("GRUB_BACKGROUND", p.trim()),
@@ -209,7 +323,7 @@ impl AppState {
         self.draft_config.get("GRUB_BACKGROUND")
     }
 
-    /// 设置 GRUB 终端控制台文本前景色与背景色 (GRUB_COLOR_NORMAL / GRUB_COLOR_HIGHLIGHT)
+    /// 设置 GRUB 终端控制台文本前景色与背景色
     pub fn set_grub_colors(&mut self, normal: Option<&str>, highlight: Option<&str>) {
         match normal {
             Some(n) if !n.trim().is_empty() => self.draft_config.set("GRUB_COLOR_NORMAL", n.trim()),
@@ -235,5 +349,58 @@ impl AppState {
     /// 获取 GRUB 终端高亮选中颜色配置
     pub fn get_grub_color_highlight(&self) -> Option<&str> {
         self.draft_config.get("GRUB_COLOR_HIGHLIGHT")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_state_custom_entries_and_aliases() {
+        let default_grub = "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n";
+        let grub_cfg = "menuentry 'Ubuntu, with Linux 6.8' --id 'gnulinux-6.8' {}\nmenuentry 'Ubuntu (recovery)' --id 'gnulinux-rec' {}\n";
+
+        let mut state = AppState::new_from_content(default_grub, grub_cfg);
+
+        // 1. 设置别名
+        state.set_entry_alias("gnulinux-6.8", "Ubuntu 6.8 (生产)");
+        assert_eq!(
+            state.get_entry_alias("gnulinux-6.8"),
+            Some("Ubuntu 6.8 (生产)")
+        );
+
+        // 2. 查看条目渲染（应包含别名）
+        let items = state.get_entry_items();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].display_title, "Ubuntu 6.8 (生产)");
+
+        // 3. 启用恢复模式过滤（原生零侵入隐藏）
+        state.set_recovery_disabled(true);
+        assert!(state.is_recovery_disabled());
+        let filtered_items = state.get_entry_items();
+        assert_eq!(filtered_items.len(), 1);
+        assert_eq!(filtered_items[0].id.as_deref(), Some("gnulinux-6.8"));
+
+        // 4. 添加自定义条目草稿
+        let custom_entry = CustomBootEntry::new_iso_boot(
+            "iso_live",
+            "Fedora Workstation Live",
+            "/boot/iso/fedora.iso",
+            "UUID-7788",
+            "",
+        );
+        state.add_custom_entry(custom_entry);
+        assert!(state.has_custom_entry_changes());
+        assert!(state.has_unsaved_changes());
+
+        // 验证当前条目列表包含自定义项
+        let items_with_custom = state.get_entry_items();
+        assert_eq!(items_with_custom.len(), 2);
+        assert!(items_with_custom.iter().any(|i| i.is_custom));
+
+        // 5. 移除自定义项
+        assert!(state.remove_custom_entry("iso_live"));
+        assert!(!state.has_custom_entry_changes());
     }
 }
