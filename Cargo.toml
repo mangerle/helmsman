@@ -5,6 +5,7 @@ members = [
     "crates/grub-boot-reader",
     "crates/grub-distro-adapter",
     "crates/grub-transaction-engine",
+    "crates/helmsman-client",
     "crates/helmsman-daemon",
     "crates/helmsman-ui",
 ]
@@ -26,6 +27,7 @@ grub-config-parser = { path = "crates/grub-config-parser", version = "0.1.0" }
 grub-boot-reader = { path = "crates/grub-boot-reader", version = "0.1.0" }
 grub-distro-adapter = { path = "crates/grub-distro-adapter", version = "0.1.0" }
 grub-transaction-engine = { path = "crates/grub-transaction-engine", version = "0.1.0" }
+helmsman-client = { path = "crates/helmsman-client", version = "0.1.0" }
 helmsman-daemon = { path = "crates/helmsman-daemon", version = "0.1.0" }
 helmsman-ui = { path = "crates/helmsman-ui", version = "0.1.0" }
 tracing = "0.1"

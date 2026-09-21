@@ -1,0 +1,19 @@
+[package]
+name = "helmsman-client"
+description = "Helmsman 非特权客户端 D-Bus 契约：DTO、Polkit 动作与系统总线代理"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+grub-boot-reader.workspace = true
+serde.workspace = true
+zbus.workspace = true
+zvariant.workspace = true
