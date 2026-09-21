@@ -178,4 +178,62 @@ impl AppState {
         let resolved = self.theme_mode.resolve(system_preference);
         ColorPalette::for_theme(resolved)
     }
+
+    /// 设置 GRUB 开机主题描述文件绝对路径 (GRUB_THEME)
+    pub fn set_grub_theme_path(&mut self, path: Option<&str>) {
+        match path {
+            Some(p) if !p.trim().is_empty() => self.draft_config.set("GRUB_THEME", p.trim()),
+            _ => {
+                self.draft_config.remove("GRUB_THEME");
+            }
+        }
+    }
+
+    /// 获取当前配置的 GRUB 开机主题路径
+    pub fn get_grub_theme_path(&self) -> Option<&str> {
+        self.draft_config.get("GRUB_THEME")
+    }
+
+    /// 设置 GRUB 开机背景壁纸路径 (GRUB_BACKGROUND)
+    pub fn set_grub_background_path(&mut self, path: Option<&str>) {
+        match path {
+            Some(p) if !p.trim().is_empty() => self.draft_config.set("GRUB_BACKGROUND", p.trim()),
+            _ => {
+                self.draft_config.remove("GRUB_BACKGROUND");
+            }
+        }
+    }
+
+    /// 获取当前配置的 GRUB 开机背景壁纸路径
+    pub fn get_grub_background_path(&self) -> Option<&str> {
+        self.draft_config.get("GRUB_BACKGROUND")
+    }
+
+    /// 设置 GRUB 终端控制台文本前景色与背景色 (GRUB_COLOR_NORMAL / GRUB_COLOR_HIGHLIGHT)
+    pub fn set_grub_colors(&mut self, normal: Option<&str>, highlight: Option<&str>) {
+        match normal {
+            Some(n) if !n.trim().is_empty() => self.draft_config.set("GRUB_COLOR_NORMAL", n.trim()),
+            _ => {
+                self.draft_config.remove("GRUB_COLOR_NORMAL");
+            }
+        }
+        match highlight {
+            Some(h) if !h.trim().is_empty() => {
+                self.draft_config.set("GRUB_COLOR_HIGHLIGHT", h.trim())
+            }
+            _ => {
+                self.draft_config.remove("GRUB_COLOR_HIGHLIGHT");
+            }
+        }
+    }
+
+    /// 获取 GRUB 终端常规颜色配置
+    pub fn get_grub_color_normal(&self) -> Option<&str> {
+        self.draft_config.get("GRUB_COLOR_NORMAL")
+    }
+
+    /// 获取 GRUB 终端高亮选中颜色配置
+    pub fn get_grub_color_highlight(&self) -> Option<&str> {
+        self.draft_config.get("GRUB_COLOR_HIGHLIGHT")
+    }
 }

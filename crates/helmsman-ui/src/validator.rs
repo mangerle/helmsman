@@ -90,6 +90,40 @@ impl SafetyValidator {
             });
         }
 
+        // 规则 4：检查主题描述文件路径格式
+        if let Some(theme_path) = config.get("GRUB_THEME") {
+            let trimmed = theme_path.trim();
+            if !trimmed.is_empty() && !trimmed.ends_with("theme.txt") {
+                issues.push(ValidationIssue {
+                    level: RiskLevel::Warning,
+                    title: "主题路径格式异常".to_string(),
+                    message: format!(
+                        "配置的主题路径 '{}' 未以 'theme.txt' 结尾。GRUB 官方规范要求 GRUB_THEME 必须指向具体的主题描述文件。",
+                        trimmed
+                    ),
+                    can_proceed: true,
+                });
+            }
+        }
+
+        // 规则 5：检查背景壁纸图形格式
+        if let Some(bg_path) = config.get("GRUB_BACKGROUND") {
+            let trimmed = bg_path.trim().to_lowercase();
+            let valid_extensions = [".png", ".jpg", ".jpeg", ".tga"];
+            let has_valid_ext = valid_extensions.iter().any(|ext| trimmed.ends_with(ext));
+            if !trimmed.is_empty() && !has_valid_ext {
+                issues.push(ValidationIssue {
+                    level: RiskLevel::Warning,
+                    title: "背景壁纸格式不支持".to_string(),
+                    message: format!(
+                        "配置的背景图片 '{}' 扩展名不受支持。GRUB 仅支持 PNG、JPEG 或 TGA 格式的位图。",
+                        bg_path.trim()
+                    ),
+                    can_proceed: true,
+                });
+            }
+        }
+
         issues
     }
 

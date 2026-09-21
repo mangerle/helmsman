@@ -106,6 +106,66 @@ impl ImpactAnalyzer {
             }
         }
 
+        // 5. 分析开机主题变更
+        let orig_theme = original.get("GRUB_THEME");
+        let draft_theme = draft.get("GRUB_THEME");
+        if orig_theme != draft_theme {
+            match (orig_theme, draft_theme) {
+                (None, Some(new_t)) => {
+                    items.push(ImpactItem {
+                        title: "启用开机视觉主题".to_string(),
+                        explanation: format!(
+                            "开机将应用图形化主题包 '{}'，提供背景壁纸、菜单框与倒计时样式美化。",
+                            new_t
+                        ),
+                    });
+                }
+                (Some(old_t), None) => {
+                    items.push(ImpactItem {
+                        title: "禁用开机视觉主题".to_string(),
+                        explanation: format!(
+                            "清除了主题包 '{}'，开机时将恢复为简单黑底文本菜单。",
+                            old_t
+                        ),
+                    });
+                }
+                (Some(old_t), Some(new_t)) => {
+                    items.push(ImpactItem {
+                        title: "切换开机视觉主题".to_string(),
+                        explanation: format!("开机主题由 '{}' 切换为 '{}'。", old_t, new_t),
+                    });
+                }
+                (None, None) => {}
+            }
+        }
+
+        // 6. 分析背景壁纸变更
+        let orig_bg = original.get("GRUB_BACKGROUND");
+        let draft_bg = draft.get("GRUB_BACKGROUND");
+        if orig_bg != draft_bg {
+            match (orig_bg, draft_bg) {
+                (None, Some(new_bg)) => {
+                    items.push(ImpactItem {
+                        title: "设置自定义开机壁纸".to_string(),
+                        explanation: format!("开机引导背景将显示图片 '{}'。", new_bg),
+                    });
+                }
+                (Some(_), None) => {
+                    items.push(ImpactItem {
+                        title: "清除自定义开机壁纸".to_string(),
+                        explanation: "开机将使用默认单色背景。".to_string(),
+                    });
+                }
+                (Some(old_bg), Some(new_bg)) => {
+                    items.push(ImpactItem {
+                        title: "更换自定义开机壁纸".to_string(),
+                        explanation: format!("壁纸由 '{}' 更换为 '{}'。", old_bg, new_bg),
+                    });
+                }
+                (None, None) => {}
+            }
+        }
+
         ImpactReport { items }
     }
 
