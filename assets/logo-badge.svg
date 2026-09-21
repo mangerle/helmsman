@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 124 32" width="124" height="32">
+  <defs>
+    <linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="124" height="32" rx="8" fill="url(#badgeGrad)"/>
+  <!-- 船舵微型符号 -->
+  <g stroke="#ffffff" stroke-width="1.6" stroke-linecap="round">
+    <line x1="16" y1="5" x2="16" y2="27"/>
+    <line x1="5" y1="16" x2="27" y2="16"/>
+    <line x1="8.22" y1="8.22" x2="23.78" y2="23.78"/>
+    <line x1="8.22" y1="23.78" x2="23.78" y2="8.22"/>
+  </g>
+  <circle cx="16" cy="16" r="7" fill="none" stroke="#ffffff" stroke-width="1.8"/>
+  <circle cx="16" cy="16" r="3" fill="#ffffff"/>
+  <circle cx="16" cy="16" r="1.2" fill="url(#badgeGrad)"/>
+  <!-- 品牌文字 -->
+  <text x="32" y="21.5" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="800" letter-spacing="0.6">HELMSMAN</text>
+</svg>

@@ -77,7 +77,7 @@ pub enum TextKey {
 pub fn get_text(lang: Language, key: TextKey) -> &'static str {
     match lang {
         Language::ZhCn => match key {
-            TextKey::AppTitle => "Helmsman (舵手) - GRUB 引导管理",
+            TextKey::AppTitle => "Helmsman - GRUB 引导管理",
             TextKey::SaveButton => "应用更改",
             TextKey::ResetButton => "放弃修改",
             TextKey::DiffPreviewTitle => "配置变更差异预览",
@@ -168,7 +168,7 @@ mod tests {
     fn test_format_text_interpolation() {
         // 测试无插值占位符的情况
         let res = format_text(Language::ZhCn, TextKey::AppTitle, &[]);
-        assert_eq!(res, "Helmsman (舵手) - GRUB 引导管理");
+        assert_eq!(res, "Helmsman - GRUB 引导管理");
     }
 
     #[test]

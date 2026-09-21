@@ -1,6 +1,6 @@
 [package]
 name = "helmsman-ui"
-description = "Helmsman (舵手) 前端应用状态模型与视图逻辑"
+description = "Helmsman 前端应用状态模型与视图逻辑"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

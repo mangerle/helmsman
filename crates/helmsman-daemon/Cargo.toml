@@ -1,6 +1,6 @@
 [package]
 name = "helmsman-daemon"
-description = "Helmsman (舵手) 特权后台服务与事务调度器"
+description = "Helmsman 特权后台服务与事务调度器"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

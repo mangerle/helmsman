@@ -1,6 +1,20 @@
-# Helmsman
+<div align="center">
 
-[English](README.md) | [简体中文](README_zh.md)
+<img src="assets/logo-badge.svg" width="380" alt="Helmsman" style="margin-bottom: 12px;" />
+
+**A modern, memory-safe, and reliable GRUB bootloader manager written in pure Rust**
+
+<p align="center">
+  <a href="README_zh.md">简体中文</a> | <b>English</b>
+</p>
+
+[![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange.svg?logo=rust)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux-brightgreen.svg)]()
+[![Safety](https://img.shields.io/badge/Safety-Forbid_Unsafe-success.svg)]()
+[![Architecture](https://img.shields.io/badge/Architecture-Privilege_Separation-blueviolet.svg)]()
+
+</div>
 
 Helmsman is a modern, memory-safe, and reliable GRUB bootloader configuration tool engineered in Rust. Designed as a robust successor to the classic Grub Customizer, Helmsman provides an intuitive user experience without compromising system stability, security, or distribution upgrade compatibility.
 

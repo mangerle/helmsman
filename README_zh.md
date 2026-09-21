@@ -1,8 +1,22 @@
-# Helmsman (舵手)
+<div align="center">
 
-[English](README.md) | [简体中文](README_zh.md)
+<img src="assets/logo-badge.svg" width="380" alt="Helmsman" style="margin-bottom: 12px;" />
 
-Helmsman（舵手）是一个基于 Rust 语言构建的现代化、内存安全且可靠的 Linux GRUB 引导配置工具。作为经典工具 Grub Customizer 的强健继任者，Helmsman 在提供直观操作体验的同时，彻底解决了老旧工具破坏系统稳定性、破坏系统升级以及存在提权安全隐患等痛点。
+**基于纯 Rust 打造的现代化、内存安全且可靠的 Linux GRUB 引导管理工具**
+
+<p align="center">
+  <b>简体中文</b> | <a href="README.md">English</a>
+</p>
+
+[![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange.svg?logo=rust)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux-brightgreen.svg)]()
+[![Safety](https://img.shields.io/badge/Safety-Forbid_Unsafe-success.svg)]()
+[![Architecture](https://img.shields.io/badge/Architecture-Privilege_Separation-blueviolet.svg)]()
+
+</div>
+
+Helmsman 是一个基于 Rust 语言构建的现代化、内存安全且可靠的 Linux GRUB 引导配置工具。作为经典工具 Grub Customizer 的强健继任者，Helmsman 在提供直观操作体验的同时，彻底解决了老旧工具破坏系统稳定性、破坏系统升级以及存在提权安全隐患等痛点。
 
 ---
 
@@ -18,7 +32,7 @@ Helmsman（舵手）是一个基于 Rust 语言构建的现代化、内存安全
 
 ## 方案对比：Helmsman 与传统 Grub Customizer
 
-| 功能特性 | 经典 Grub Customizer | Helmsman (舵手) |
+| 功能特性 | 经典 Grub Customizer | Helmsman |
 | :--- | :--- | :--- |
 | **开发语言** | C++ (GTK3) | 100% 内存安全 Rust |
 | **运行模式** | 整个 UI 必须以 `root` 权限启动（极高安全隐患） | 特权分离：非特权 UI + Polkit/D-Bus 后台服务 |

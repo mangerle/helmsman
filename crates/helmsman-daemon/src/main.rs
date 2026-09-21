@@ -7,7 +7,7 @@ use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, fmt};
 
 fn print_usage() {
-    println!("Helmsman (舵手) 特权后台服务 (helmsman-daemon)");
+    println!("Helmsman 特权后台服务 (helmsman-daemon)");
     println!("用法:");
     println!("  helmsman-daemon [--daemon]             启动 D-Bus 系统总线监听服务（默认模式）");
     println!("  helmsman-daemon --status               查看当前系统与引导适配状态");

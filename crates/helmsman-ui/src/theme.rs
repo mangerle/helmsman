@@ -306,7 +306,7 @@ impl Default for WindowConfig {
             default_height: 640.0,
             min_width: 720.0,
             min_height: 480.0,
-            title: "Helmsman (舵手)".to_string(),
+            title: "Helmsman".to_string(),
             prefer_wayland: true,
         }
     }
