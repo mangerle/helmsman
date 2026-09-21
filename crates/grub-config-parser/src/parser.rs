@@ -1,23 +1,13 @@
 use crate::ast::{ConfigLine, GrubConfigFile, QuoteType};
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 
 /// 解析过程中的错误类型
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum ParseError {
     /// 语法未识别
+    #[error("无法解析的配置行: {0}")]
     InvalidLine(String),
 }
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::InvalidLine(line) => write!(f, "无法解析的配置行: {}", line),
-        }
-    }
-}
-
-impl Error for ParseError {}
 
 /// 解析单行文本为 ConfigLine
 pub fn parse_line(line: &str) -> ConfigLine {
@@ -159,4 +149,90 @@ fn is_valid_identifier(ident: &str) -> bool {
 pub fn parse_grub_config(content: &str) -> GrubConfigFile {
     let lines = content.lines().map(parse_line).collect();
     GrubConfigFile { lines }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_assignment_with_quotes_and_comment() {
+        let line = r#"  GRUB_TIMEOUT="5" # 启动等待秒数"#;
+        let parsed = parse_line(line);
+        match parsed {
+            ConfigLine::Assignment {
+                key,
+                value,
+                quote_type,
+                has_export,
+                prefix_whitespace,
+                trailing_comment,
+            } => {
+                assert_eq!(key, "GRUB_TIMEOUT");
+                assert_eq!(value, "5");
+                assert_eq!(quote_type, QuoteType::Double);
+                assert!(!has_export);
+                assert_eq!(prefix_whitespace, "  ");
+                assert_eq!(trailing_comment.as_deref(), Some("# 启动等待秒数"));
+            }
+            other => panic!("期望赋值行，实际: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_export_and_single_quote() {
+        let parsed = parse_line("export GRUB_DEFAULT='0'");
+        match parsed {
+            ConfigLine::Assignment {
+                key,
+                value,
+                quote_type,
+                has_export,
+                ..
+            } => {
+                assert_eq!(key, "GRUB_DEFAULT");
+                assert_eq!(value, "0");
+                assert_eq!(quote_type, QuoteType::Single);
+                assert!(has_export);
+            }
+            other => panic!("期望 export 赋值行，实际: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_invalid_identifier_returns_raw() {
+        let line = "1BAD=value";
+        assert_eq!(parse_line(line), ConfigLine::Raw(line.to_string()));
+    }
+
+    #[test]
+    fn test_parse_comment_empty_and_raw() {
+        assert!(matches!(parse_line("   "), ConfigLine::Empty));
+        assert!(matches!(parse_line("# 注释"), ConfigLine::Comment(_)));
+        assert!(matches!(parse_line("if true; then"), ConfigLine::Raw(_)));
+    }
+
+    #[test]
+    fn test_parse_unclosed_quote_returns_raw() {
+        let line = r#"GRUB_CMDLINE_LINUX="quiet"#;
+        assert_eq!(parse_line(line), ConfigLine::Raw(line.to_string()));
+    }
+
+    #[test]
+    fn test_parse_grub_config_roundtrip_format() {
+        let content = "# 头注释\n\nGRUB_TIMEOUT=3\nexport GRUB_DEFAULT=\"0\"\n";
+        let cfg = parse_grub_config(content);
+        assert_eq!(cfg.get("GRUB_TIMEOUT"), Some("3"));
+        assert_eq!(cfg.get("GRUB_DEFAULT"), Some("0"));
+        let rendered: Vec<String> = cfg.lines.iter().map(ConfigLine::format_line).collect();
+        assert_eq!(
+            rendered,
+            vec![
+                "# 头注释".to_string(),
+                String::new(),
+                "GRUB_TIMEOUT=3".to_string(),
+                "export GRUB_DEFAULT=\"0\"".to_string(),
+            ]
+        );
+    }
 }

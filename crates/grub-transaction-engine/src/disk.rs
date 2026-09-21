@@ -1,11 +1,16 @@
-use std::error::Error;
-use std::fmt;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 /// 磁盘空间检查错误
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum DiskSpaceError {
     /// 目标路径可用空间不足
+    #[error(
+        "目标分区可用空间不足，路径: {}, 当前剩余: {} MB，最低要求: {} MB。请清理磁盘空间以防引导文件截断损坏。",
+        path.display(),
+        available_bytes / (1024 * 1024),
+        required_bytes / (1024 * 1024)
+    )]
     InsufficientSpace {
         /// 目标路径
         path: PathBuf,
@@ -15,6 +20,7 @@ pub enum DiskSpaceError {
         required_bytes: u64,
     },
     /// 查询空间失败
+    #[error("查询目标路径可用磁盘空间失败，路径: {}, 原因: {reason}", path.display())]
     QueryFailed {
         /// 目标路径
         path: PathBuf,
@@ -22,38 +28,6 @@ pub enum DiskSpaceError {
         reason: String,
     },
 }
-
-impl fmt::Display for DiskSpaceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DiskSpaceError::InsufficientSpace {
-                path,
-                available_bytes,
-                required_bytes,
-            } => {
-                let avail_mb = available_bytes / (1024 * 1024);
-                let req_mb = required_bytes / (1024 * 1024);
-                write!(
-                    f,
-                    "目标分区可用空间不足，路径: {}，当前剩余: {} MB，最低要求: {} MB。请清理磁盘空间以防引导文件截断损坏。",
-                    path.display(),
-                    avail_mb,
-                    req_mb
-                )
-            }
-            DiskSpaceError::QueryFailed { path, reason } => {
-                write!(
-                    f,
-                    "查询目标路径可用磁盘空间失败，路径: {}，原因: {}",
-                    path.display(),
-                    reason
-                )
-            }
-        }
-    }
-}
-
-impl Error for DiskSpaceError {}
 
 /// 获取指定路径所在分区的可用字节数（100% 纯安全实现）
 pub fn get_available_bytes(path: &Path) -> Result<u64, String> {
