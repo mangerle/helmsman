@@ -30,9 +30,9 @@ fn get_p2p_test_env(name: &str) -> (PathBuf, PathBuf, GrubService, CustomManager
         name: "Ubuntu Linux".to_string(),
         firmware: FirmwareType::Uefi,
         config_path: "/boot/grub/grub.cfg".to_string(),
-        update_command: "update-grub".to_string(),
+        update_command: "/usr/sbin/update-grub".to_string(),
         command_args: Vec::new(),
-        check_command: "grub-script-check".to_string(),
+        check_command: "/usr/bin/grub-script-check".to_string(),
         check_command_args: Vec::new(),
         grubenv_path: "/boot/grub/grubenv".to_string(),
         set_default_command: "echo".to_string(),
@@ -152,9 +152,10 @@ async fn test_dbus_p2p_end_to_end_not_authorized_blocked() {
         .await
         .unwrap();
 
-    // 1. 只读操作不受 Polkit 阻断
+    // 1. 在 test-support Mock 拒绝策略下，只读接口同样返回 NotAuthorized
+    //（生产环境 read 动作对 active 会话为 allow_active=yes，由真实 polkit 判定）
     let status = proxy.get_system_status().await;
-    assert!(status.is_ok());
+    assert!(status.is_err(), "Mock 拒绝时只读接口也不应放行");
 
     // 2. 特权写操作必须被 Polkit 鉴权拦截，返回 NotAuthorized 错误
     let new_cfg = "GRUB_DEFAULT=99\nGRUB_TIMEOUT=0\n";

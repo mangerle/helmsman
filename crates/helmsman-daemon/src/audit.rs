@@ -71,12 +71,39 @@ pub fn record_audit_event(event: &AuditEvent) {
     );
 }
 
-/// 解析调用方的真实用户 UID
+/// 解析调用方的真实用户 UID（进程环境回退路径）
 ///
-/// 优先从 PolicyKit (`PKEXEC_UID`)、Sudo (`SUDO_UID`) 环境变量中提取，
-/// 若均不存在则默认回退到 0（root 守护进程特权上下文）。
+/// D-Bus 服务端应优先使用 [`resolve_caller_uid_from_bus`]；
+/// 本函数仅在总线查询失败或本地直接调用库 API 时使用。
 pub fn resolve_caller_uid() -> u32 {
     resolve_caller_uid_from_lookup(|k| env::var(k).ok())
+}
+
+/// 经 D-Bus 总线查询调用方的 Unix UID
+///
+/// # 设计原理
+/// - **实现初衷**：守护进程由 systemd/D-Bus 拉起时，`PKEXEC_UID`/`SUDO_UID` 通常不存在，
+///   仅靠环境变量会把审计 UID 记成 0。应通过总线 `GetConnectionUnixUser` 取真实调用者。
+/// - **代价与局限**：点对点（p2p）测试连接或总线查询失败时回退到环境变量解析。
+pub async fn resolve_caller_uid_from_bus(
+    connection: &zbus::Connection,
+    caller_sender: &str,
+) -> u32 {
+    if caller_sender.is_empty() || caller_sender == "p2p-peer" {
+        return resolve_caller_uid();
+    }
+
+    let Ok(bus_name) = zbus::names::BusName::try_from(caller_sender) else {
+        return resolve_caller_uid();
+    };
+
+    match zbus::fdo::DBusProxy::new(connection).await {
+        Ok(dbus) => match dbus.get_connection_unix_user(bus_name).await {
+            Ok(uid) => uid,
+            Err(_) => resolve_caller_uid(),
+        },
+        Err(_) => resolve_caller_uid(),
+    }
 }
 
 /// 内部 UID 解析实现（支持安全无 unsafe 依赖注入测试）

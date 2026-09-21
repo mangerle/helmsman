@@ -94,6 +94,8 @@ All crates include thorough unit and integration test suites:
 
 ```bash
 cargo test --workspace
+# Polkit mock / test command whitelist for helmsman-daemon:
+cargo test -p helmsman-daemon --features test-support
 ```
 
 ### Static Analysis and Code Formatting

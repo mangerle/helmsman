@@ -73,13 +73,31 @@ impl CustomManager {
         Ok(parse_custom_script(&content))
     }
 
-    /// 保存自定义引导项列表至受管脚本（受事务引擎保护并设置执行权限）
+    /// 保存自定义引导项列表至受管脚本（审计 UID 取自进程环境回退）
+    ///
+    /// # Errors
+    /// 当目录创建、快照、原子写入或引导更新失败时返回对应的 `DaemonError`。
     pub fn save_custom_entries(
         &self,
         service: &GrubService,
         entries: &[CustomBootEntry],
         reason: &str,
         options: &TransactionOptions,
+    ) -> Result<TransactionResult, DaemonError> {
+        self.save_custom_entries_as(service, entries, reason, options, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 保存自定义引导项列表
+    ///
+    /// # Errors
+    /// 当目录创建、快照、原子写入或引导更新失败时返回对应的 `DaemonError`。
+    pub fn save_custom_entries_as(
+        &self,
+        service: &GrubService,
+        entries: &[CustomBootEntry],
+        reason: &str,
+        options: &TransactionOptions,
+        caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
         let start_time = Instant::now();
         let new_script_content = generate_custom_script(entries);
@@ -137,18 +155,19 @@ impl CustomManager {
                 });
             }
 
-            // 若不需要跳过则触发引导更新
-            let update_res = service.apply_changes(
+            // 若不需要跳过则触发引导更新（沿用调用方 UID 以保持审计一致）
+            let update_res = service.apply_changes_as(
                 &fs::read_to_string(&service.default_config_path).unwrap_or_default(),
                 reason,
                 options,
+                caller_uid,
             )?;
             Ok(update_res)
         })();
 
         let success = res.as_ref().map(|r| r.success).unwrap_or(false);
         record_audit_event(&AuditEvent {
-            caller_uid: resolve_caller_uid(),
+            caller_uid,
             action: AuditAction::ApplyChanges,
             reason: format!("更新自定义条目: {}", reason),
             snapshot_id: res.as_ref().ok().map(|r| r.snapshot_id.clone()),

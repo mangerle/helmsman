@@ -175,13 +175,28 @@ impl GrubService {
         self
     }
 
-    /// 从压缩包安全安装主题至系统主题目录
+    /// 从压缩包安全安装主题至系统主题目录（审计 UID 取自进程环境回退）
+    ///
+    /// # Errors
+    /// 当压缩包校验失败、路径穿越或落盘失败时返回 [`DaemonError::ThemeInstallFailed`]。
     pub fn install_theme_archive(
         &self,
         archive_path: &Path,
         theme_name: Option<&str>,
     ) -> Result<PathBuf, DaemonError> {
-        let caller_uid = resolve_caller_uid();
+        self.install_theme_archive_as(archive_path, theme_name, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 从压缩包安全安装主题
+    ///
+    /// # Errors
+    /// 当压缩包校验失败、路径穿越或落盘失败时返回 [`DaemonError::ThemeInstallFailed`]。
+    pub fn install_theme_archive_as(
+        &self,
+        archive_path: &Path,
+        theme_name: Option<&str>,
+        caller_uid: u32,
+    ) -> Result<PathBuf, DaemonError> {
         let start_time = Instant::now();
         let installed = grub_transaction_engine::install_theme_from_archive(
             archive_path,
@@ -231,6 +246,8 @@ impl GrubService {
 
     /// 执行配置提交事务（包含快照、原子替换、引导编译与失败自动回滚）
     ///
+    /// 审计 UID 回退为进程环境解析结果；D-Bus 服务端请改用 [`Self::apply_changes_as`]。
+    ///
     /// # Errors
     /// 当文件不存在、快照创建失败或写入失败时返回对应的 `DaemonError`。
     pub fn apply_changes(
@@ -238,6 +255,20 @@ impl GrubService {
         new_config: &str,
         reason: &str,
         options: &TransactionOptions,
+    ) -> Result<TransactionResult, DaemonError> {
+        self.apply_changes_as(new_config, reason, options, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 执行配置提交事务
+    ///
+    /// # Errors
+    /// 当文件不存在、快照创建失败或写入失败时返回对应的 `DaemonError`。
+    pub fn apply_changes_as(
+        &self,
+        new_config: &str,
+        reason: &str,
+        options: &TransactionOptions,
+        caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
         let start_time = Instant::now();
         let diff_summary = fs::read_to_string(&self.default_config_path)
@@ -315,7 +346,7 @@ impl GrubService {
         };
 
         record_audit_event(&AuditEvent {
-            caller_uid: resolve_caller_uid(),
+            caller_uid,
             action: AuditAction::ApplyChanges,
             reason: reason.to_string(),
             snapshot_id,
@@ -441,11 +472,23 @@ impl GrubService {
         }
     }
 
-    /// 一键回滚至指定快照
+    /// 一键回滚至指定快照（审计 UID 取自进程环境回退）
     ///
     /// # Errors
     /// 当快照列表无法读取、未找到 ID 或还原失败时返回对应的 `DaemonError`。
     pub fn rollback_to_snapshot(&self, snapshot_id: &str) -> Result<(), DaemonError> {
+        self.rollback_to_snapshot_as(snapshot_id, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 回滚至指定快照
+    ///
+    /// # Errors
+    /// 当快照列表无法读取、未找到 ID 或还原失败时返回对应的 `DaemonError`。
+    pub fn rollback_to_snapshot_as(
+        &self,
+        snapshot_id: &str,
+        caller_uid: u32,
+    ) -> Result<(), DaemonError> {
         let start_time = Instant::now();
         let res = (|| -> Result<(), DaemonError> {
             let snapshots =
@@ -470,7 +513,7 @@ impl GrubService {
         })();
 
         record_audit_event(&AuditEvent {
-            caller_uid: resolve_caller_uid(),
+            caller_uid,
             action: AuditAction::RollbackSnapshot,
             reason: format!("还原至快照 {}", snapshot_id),
             snapshot_id: Some(snapshot_id.to_string()),
@@ -492,11 +535,23 @@ impl GrubService {
         })
     }
 
-    /// 通过 grubenv 快速设置默认启动项（微秒级生效，无需重写配置与重新生成引导脚本）
+    /// 通过 grubenv 快速设置默认启动项（审计 UID 取自进程环境回退）
     ///
     /// # Errors
     /// 当包管理器被占用、命令执行失败或退出码非零时返回对应的 `DaemonError`。
     pub fn set_default_entry_fast(&self, entry_id_or_title: &str) -> Result<(), DaemonError> {
+        self.set_default_entry_fast_as(entry_id_or_title, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 通过 grubenv 快速设置默认启动项
+    ///
+    /// # Errors
+    /// 当包管理器被占用、命令执行失败或退出码非零时返回对应的 `DaemonError`。
+    pub fn set_default_entry_fast_as(
+        &self,
+        entry_id_or_title: &str,
+        caller_uid: u32,
+    ) -> Result<(), DaemonError> {
         let start_time = Instant::now();
         let res = (|| -> Result<(), DaemonError> {
             check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
@@ -536,7 +591,7 @@ impl GrubService {
         })();
 
         record_audit_event(&AuditEvent {
-            caller_uid: resolve_caller_uid(),
+            caller_uid,
             action: AuditAction::SetDefaultFast,
             reason: format!("设置为 {}", entry_id_or_title),
             snapshot_id: None,

@@ -12,6 +12,12 @@ homepage.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# 仅供单元测试/集成测试与 CI 使用：启用 Polkit Mock 与测试命令白名单。
+# 发行版打包与生产构建严禁启用本 feature。
+test-support = []
+
 [dependencies]
 grub-config-parser.workspace = true
 grub-boot-reader.workspace = true
@@ -19,6 +25,7 @@ grub-distro-adapter.workspace = true
 grub-transaction-engine.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+thiserror.workspace = true
 zbus.workspace = true
 zvariant.workspace = true
 serde.workspace = true

@@ -40,8 +40,6 @@
       <allow_inactive>auth_admin</allow_inactive>
       <allow_active>auth_admin</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/helmsman-daemon</annotate>
-    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
   <action id="org.freedesktop.Helmsman.rollback">
@@ -49,6 +47,30 @@
     <description xml:lang="zh_CN">回滚 GRUB 配置至指定历史快照</description>
     <message>Authentication is required to restore previous GRUB configuration</message>
     <message xml:lang="zh_CN">还原历史 GRUB 配置快照需要管理员身份验证</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.Helmsman.set-alias">
+    <description>Set friendly alias for a boot entry</description>
+    <description xml:lang="zh_CN">设置引导项友好别名映射</description>
+    <message>Authentication is required to modify boot entry aliases</message>
+    <message xml:lang="zh_CN">修改引导项别名需要管理员身份验证</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.Helmsman.install-theme">
+    <description>Install a GRUB theme archive</description>
+    <description xml:lang="zh_CN">安装 GRUB 主题压缩包</description>
+    <message>Authentication is required to install a GRUB theme</message>
+    <message xml:lang="zh_CN">安装 GRUB 主题需要管理员身份验证</message>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>

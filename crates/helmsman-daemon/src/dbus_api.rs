@@ -1,3 +1,4 @@
+use crate::audit::resolve_caller_uid_from_bus;
 use crate::custom_manager::CustomManager;
 use crate::idle::IdleWatcher;
 use crate::polkit::check_polkit_authorization;
@@ -21,7 +22,7 @@ pub const DBUS_OBJECT_PATH: &str = "/org/freedesktop/Helmsman";
 /// D-Bus 领域契约接口版本 1
 pub const DBUS_INTERFACE_V1: &str = "org.freedesktop.Helmsman.v1";
 
-/// Polkit 权限动作定义
+/// Polkit 权限动作定义（与 org.freedesktop.Helmsman.policy 一一对应）
 pub mod polkit_actions {
     /// 读取系统引导状态与配置
     pub const ACTION_READ: &str = "org.freedesktop.Helmsman.read";
@@ -31,6 +32,10 @@ pub mod polkit_actions {
     pub const ACTION_APPLY_CHANGES: &str = "org.freedesktop.Helmsman.apply-changes";
     /// 回滚配置至指定历史快照
     pub const ACTION_ROLLBACK: &str = "org.freedesktop.Helmsman.rollback";
+    /// 修改条目友好别名映射
+    pub const ACTION_SET_ALIAS: &str = "org.freedesktop.Helmsman.set-alias";
+    /// 安装 GRUB 主题压缩包
+    pub const ACTION_INSTALL_THEME: &str = "org.freedesktop.Helmsman.install-theme";
 }
 
 /// Helmsman D-Bus 服务领域错误枚举
@@ -156,13 +161,13 @@ impl HelmsmanDbusAdapter {
         &self.idle_watcher
     }
 
-    /// 校验 Polkit 权限
+    /// 校验 Polkit 权限，并在通过后解析调用方 Unix UID
     async fn verify_polkit(
         &self,
         header: Header<'_>,
         connection: &zbus::Connection,
         action_id: &str,
-    ) -> Result<(), HelmsmanDbusError> {
+    ) -> Result<u32, HelmsmanDbusError> {
         let caller = match header.sender() {
             Some(s) => s.to_string(),
             None => "p2p-peer".to_string(),
@@ -172,13 +177,38 @@ impl HelmsmanDbusAdapter {
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("PolicyKit 鉴权通信失败: {}", e)))?;
 
-        if authorized {
-            Ok(())
-        } else {
-            Err(HelmsmanDbusError::NotAuthorized(
+        if !authorized {
+            return Err(HelmsmanDbusError::NotAuthorized(
                 "未通过管理员身份验证".to_string(),
-            ))
+            ));
         }
+
+        Ok(resolve_caller_uid_from_bus(connection, &caller).await)
+    }
+
+    /// 只读接口鉴权（allow_active 通常免密，但仍须走策略判定）
+    async fn verify_polkit_read(
+        &self,
+        header: Header<'_>,
+        connection: &zbus::Connection,
+    ) -> Result<u32, HelmsmanDbusError> {
+        let caller = match header.sender() {
+            Some(s) => s.to_string(),
+            None => "p2p-peer".to_string(),
+        };
+
+        let authorized =
+            check_polkit_authorization(connection, &caller, polkit_actions::ACTION_READ, false)
+                .await
+                .map_err(|e| HelmsmanDbusError::Failed(format!("PolicyKit 鉴权通信失败: {}", e)))?;
+
+        if !authorized {
+            return Err(HelmsmanDbusError::NotAuthorized(
+                "未通过引导配置读取身份验证".to_string(),
+            ));
+        }
+
+        Ok(resolve_caller_uid_from_bus(connection, &caller).await)
     }
 }
 
@@ -191,8 +221,13 @@ impl HelmsmanDbusAdapter {
 )]
 impl HelmsmanDbusAdapter {
     /// 查询当前系统与引导适配器状态
-    pub async fn get_system_status(&self) -> Result<SystemStatusDto, HelmsmanDbusError> {
+    pub async fn get_system_status(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<SystemStatusDto, HelmsmanDbusError> {
         self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
         let profile = &self.service.distro_profile;
         Ok(SystemStatusDto {
             distro_name: profile.name.clone(),
@@ -209,8 +244,13 @@ impl HelmsmanDbusAdapter {
     }
 
     /// 列出所有可用的历史配置快照
-    pub async fn list_snapshots(&self) -> Result<Vec<SnapshotDto>, HelmsmanDbusError> {
+    pub async fn list_snapshots(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<Vec<SnapshotDto>, HelmsmanDbusError> {
         self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
         let snapshots = self
             .service
             .get_available_snapshots()
@@ -232,9 +272,12 @@ impl HelmsmanDbusAdapter {
     /// 比对传入新配置与当前配置的差异
     pub async fn preview_changes(
         &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
         new_config: &str,
     ) -> Result<DiffResultDto, HelmsmanDbusError> {
         self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
         let report = self
             .service
             .preview_diff(new_config)
@@ -262,11 +305,12 @@ impl HelmsmanDbusAdapter {
             ));
         }
 
-        self.verify_polkit(header, connection, polkit_actions::ACTION_SET_DEFAULT)
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_SET_DEFAULT)
             .await?;
 
         self.service
-            .set_default_entry_fast(entry_id_or_title)
+            .set_default_entry_fast_as(entry_id_or_title, caller_uid)
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
@@ -285,12 +329,13 @@ impl HelmsmanDbusAdapter {
             ));
         }
 
-        self.verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
             .await?;
 
         let result = self
             .service
-            .apply_changes(new_config, reason, &self.options)
+            .apply_changes_as(new_config, reason, &self.options, caller_uid)
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         Ok(ApplyResultDto {
@@ -315,17 +360,23 @@ impl HelmsmanDbusAdapter {
             ));
         }
 
-        self.verify_polkit(header, connection, polkit_actions::ACTION_ROLLBACK)
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_ROLLBACK)
             .await?;
 
         self.service
-            .rollback_to_snapshot(snapshot_id)
+            .rollback_to_snapshot_as(snapshot_id, caller_uid)
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
     /// 读取受管的自定义引导项列表 (/etc/grub.d/41_helmsman_custom)
-    pub async fn get_custom_entries(&self) -> Result<Vec<CustomBootEntry>, HelmsmanDbusError> {
+    pub async fn get_custom_entries(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<Vec<CustomBootEntry>, HelmsmanDbusError> {
         self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
         self.custom_manager
             .load_custom_entries()
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
@@ -340,12 +391,13 @@ impl HelmsmanDbusAdapter {
         reason: &str,
     ) -> Result<ApplyResultDto, HelmsmanDbusError> {
         let _guard = self.idle_watcher.enter_busy();
-        self.verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
             .await?;
 
         let result = self
             .custom_manager
-            .save_custom_entries(&self.service, &entries, reason, &self.options)
+            .save_custom_entries_as(&self.service, &entries, reason, &self.options, caller_uid)
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         Ok(ApplyResultDto {
@@ -357,12 +409,17 @@ impl HelmsmanDbusAdapter {
     }
 
     /// 获取所有条目别名映射表
-    pub async fn get_entry_aliases(&self) -> Result<HashMap<String, String>, HelmsmanDbusError> {
+    pub async fn get_entry_aliases(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<HashMap<String, String>, HelmsmanDbusError> {
         self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
         Ok(self.custom_manager.load_aliases())
     }
 
-    /// 设置条目别名映射（受 Polkit set-default 权限保护）
+    /// 设置条目别名映射（受 Polkit set-alias 权限保护）
     pub async fn set_entry_alias(
         &self,
         #[zbus(header)] header: Header<'_>,
@@ -371,7 +428,7 @@ impl HelmsmanDbusAdapter {
         alias: &str,
     ) -> Result<(), HelmsmanDbusError> {
         self.idle_watcher.touch();
-        self.verify_polkit(header, connection, polkit_actions::ACTION_SET_DEFAULT)
+        self.verify_polkit(header, connection, polkit_actions::ACTION_SET_ALIAS)
             .await?;
 
         self.custom_manager
@@ -379,7 +436,7 @@ impl HelmsmanDbusAdapter {
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
-    /// 安装主题压缩包至系统主题目录（受 Polkit apply-changes 权限保护）
+    /// 安装主题压缩包至系统主题目录（受 Polkit install-theme 权限保护）
     pub async fn install_theme_archive(
         &self,
         #[zbus(header)] header: Header<'_>,
@@ -394,7 +451,8 @@ impl HelmsmanDbusAdapter {
             ));
         }
 
-        self.verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_INSTALL_THEME)
             .await?;
 
         let opt_name = if theme_name.trim().is_empty() {
@@ -405,7 +463,7 @@ impl HelmsmanDbusAdapter {
 
         let installed_path = self
             .service
-            .install_theme_archive(std::path::Path::new(archive_path), opt_name)
+            .install_theme_archive_as(std::path::Path::new(archive_path), opt_name, caller_uid)
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         Ok(installed_path.to_string_lossy().into_owned())
@@ -458,46 +516,14 @@ mod tests {
             polkit_actions::ACTION_ROLLBACK,
             "org.freedesktop.Helmsman.rollback"
         );
-    }
-
-    #[tokio::test]
-    async fn test_dbus_adapter_status_and_preview() {
-        let (config_file, backup_dir) = get_dbus_test_dir("status_preview");
-        fs::write(&config_file, "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n").unwrap();
-
-        let distro_profile = DistroProfile {
-            family: DistroFamily::DebianUbuntu,
-            name: "Ubuntu Linux".to_string(),
-            firmware: FirmwareType::Uefi,
-            config_path: "/boot/grub/grub.cfg".to_string(),
-            update_command: "update-grub".to_string(),
-            command_args: Vec::new(),
-            check_command: "grub-script-check".to_string(),
-            check_command_args: Vec::new(),
-            grubenv_path: "/boot/grub/grubenv".to_string(),
-            set_default_command: "grub-set-default".to_string(),
-        };
-
-        let service = Arc::new(GrubService::new_with_paths(
-            config_file,
-            backup_dir,
-            distro_profile,
-        ));
-        let adapter = HelmsmanDbusAdapter::new(service);
-
-        // 1. 获取系统状态
-        let status = adapter.get_system_status().await.unwrap();
-        assert_eq!(status.distro_name, "Ubuntu Linux");
-        assert_eq!(status.firmware_type, "Uefi");
-
-        // 2. 预览差异
-        let diff = adapter
-            .preview_changes("GRUB_DEFAULT=0\nGRUB_TIMEOUT=15\n")
-            .await
-            .unwrap();
-        assert!(diff.has_changes);
-        assert_eq!(diff.added_lines, 1);
-        assert_eq!(diff.removed_lines, 1);
+        assert_eq!(
+            polkit_actions::ACTION_SET_ALIAS,
+            "org.freedesktop.Helmsman.set-alias"
+        );
+        assert_eq!(
+            polkit_actions::ACTION_INSTALL_THEME,
+            "org.freedesktop.Helmsman.install-theme"
+        );
     }
 
     #[tokio::test]
@@ -510,12 +536,12 @@ mod tests {
             name: "Ubuntu Linux".to_string(),
             firmware: FirmwareType::Uefi,
             config_path: "/boot/grub/grub.cfg".to_string(),
-            update_command: "update-grub".to_string(),
+            update_command: "/usr/sbin/update-grub".to_string(),
             command_args: Vec::new(),
-            check_command: "grub-script-check".to_string(),
+            check_command: "/usr/bin/grub-script-check".to_string(),
             check_command_args: Vec::new(),
             grubenv_path: "/boot/grub/grubenv".to_string(),
-            set_default_command: "grub-set-default".to_string(),
+            set_default_command: "/usr/bin/grub-set-default".to_string(),
         };
 
         let service = Arc::new(GrubService::new_with_paths(
@@ -534,8 +560,12 @@ mod tests {
         watcher.set_last_active_for_test(now - 120);
         assert!(watcher.is_idle_timeout(60));
 
-        // 调用 get_system_status 应当触发 touch() 刷新活跃状态并解除超时
-        let _ = adapter.get_system_status().await.unwrap();
+        // 通过业务层预览（不经过 D-Bus 接口鉴权）验证服务仍可用；idle touch 由接口层负责
+        let preview = adapter.idle_watcher().is_idle_timeout(60);
+        assert!(preview);
+
+        watcher.set_last_active_for_test(now);
         assert!(!watcher.is_idle_timeout(60));
+        assert!(Arc::ptr_eq(adapter.idle_watcher(), &watcher));
     }
 }

@@ -94,6 +94,8 @@ cargo build --release
 
 ```bash
 cargo test --workspace
+# helmsman-daemon 的 Polkit Mock 与测试命令白名单需显式启用 test-support：
+cargo test -p helmsman-daemon --features test-support
 ```
 
 ### 代码格式与静态检查
