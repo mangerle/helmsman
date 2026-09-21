@@ -348,4 +348,44 @@ impl GrubService {
             reason: e.to_string(),
         })
     }
+
+    /// 通过 grubenv 快速设置默认启动项（微秒级生效，无需重写配置与重新生成引导脚本）
+    ///
+    /// # Errors
+    /// 当包管理器被占用、命令执行失败或退出码非零时返回对应的 `DaemonError`。
+    pub fn set_default_entry_fast(&self, entry_id_or_title: &str) -> Result<(), DaemonError> {
+        check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
+            DaemonError::PackageManagerLocked {
+                message: e.to_string(),
+            }
+        })?;
+
+        debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
+
+        let mut cmd = Command::new(&self.distro_profile.set_default_command);
+        cmd.arg(entry_id_or_title);
+
+        match cmd.output() {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("通过 grubenv 成功设置默认启动项: {}", entry_id_or_title);
+                    Ok(())
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(DaemonError::CommandLaunchFailed {
+                        command: self.distro_profile.set_default_command.clone(),
+                        reason: format!(
+                            "退出码非零 ({:?}): {}",
+                            output.status.code(),
+                            stderr.trim()
+                        ),
+                    })
+                }
+            }
+            Err(e) => Err(DaemonError::CommandLaunchFailed {
+                command: self.distro_profile.set_default_command.clone(),
+                reason: e.to_string(),
+            }),
+        }
+    }
 }

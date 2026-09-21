@@ -72,3 +72,17 @@ fn test_ui_state_lifecycle() {
         Some("/EFI/Microsoft/Boot/bootmgfw.efi")
     );
 }
+
+#[test]
+fn test_saved_default_mode() {
+    let mut state = AppState::new_from_content(SAMPLE_DEFAULT_GRUB, SAMPLE_GRUB_CFG);
+
+    // 初始状态下未启用 saved 模式
+    assert!(!state.is_saved_default_enabled());
+
+    // 启用 saved 模式
+    state.enable_saved_default_mode();
+    assert!(state.is_saved_default_enabled());
+    assert_eq!(state.get_default_entry(), Some("saved"));
+    assert_eq!(state.draft_config.get("GRUB_SAVEDEFAULT"), Some("true"));
+}

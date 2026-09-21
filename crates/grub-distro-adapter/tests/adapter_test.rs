@@ -57,6 +57,8 @@ fn test_ubuntu_adapter() {
     assert_eq!(profile.update_command, "update-grub");
     assert_eq!(profile.check_command, "grub-script-check");
     assert_eq!(profile.config_path, "/boot/grub/grub.cfg");
+    assert_eq!(profile.grubenv_path, "/boot/grub/grubenv");
+    assert_eq!(profile.set_default_command, "grub-set-default");
     assert!(profile.command_args.is_empty());
 }
 
@@ -67,6 +69,8 @@ fn test_arch_adapter() {
     assert_eq!(profile.name, "Arch Linux");
     assert_eq!(profile.update_command, "grub-mkconfig");
     assert_eq!(profile.config_path, "/boot/grub/grub.cfg");
+    assert_eq!(profile.grubenv_path, "/boot/grub/grubenv");
+    assert_eq!(profile.set_default_command, "grub-set-default");
     assert_eq!(profile.command_args, vec!["-o", "/boot/grub/grub.cfg"]);
 }
 

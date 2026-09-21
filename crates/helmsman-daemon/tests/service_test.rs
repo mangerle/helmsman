@@ -30,6 +30,8 @@ fn test_service_apply_and_rollback() {
         command_args: Vec::new(),
         check_command: "true".to_string(),
         check_command_args: Vec::new(),
+        grubenv_path: "/boot/grub/grubenv".to_string(),
+        set_default_command: "true".to_string(),
     };
 
     let service =
@@ -87,6 +89,8 @@ fn test_service_package_manager_lock_blocks_apply() {
         command_args: Vec::new(),
         check_command: "true".to_string(),
         check_command_args: Vec::new(),
+        grubenv_path: "/boot/grub/grubenv".to_string(),
+        set_default_command: "true".to_string(),
     };
 
     let service = GrubService::new_with_paths(config_file, backup_dir, distro_profile)
@@ -140,6 +144,8 @@ fn test_service_syntax_check_failure_triggers_rollback() {
         command_args: update_args,
         check_command: check_cmd,
         check_command_args: check_args,
+        grubenv_path: "/boot/grub/grubenv".to_string(),
+        set_default_command: "true".to_string(),
     };
 
     let service = GrubService::new_with_paths(config_file.clone(), backup_dir, distro_profile);
@@ -160,4 +166,35 @@ fn test_service_syntax_check_failure_triggers_rollback() {
     // 验证原始文件内容已被恢复
     let restored = fs::read_to_string(&config_file).unwrap();
     assert_eq!(restored, "GRUB_DEFAULT=0\n");
+}
+
+#[test]
+fn test_service_set_default_entry_fast() {
+    let (config_file, backup_dir) = get_service_test_dir("set_default_fast");
+    fs::write(&config_file, "GRUB_DEFAULT=saved\n").unwrap();
+
+    #[cfg(windows)]
+    let set_cmd = "cmd".to_string();
+    #[cfg(not(windows))]
+    let set_cmd = "true".to_string();
+
+    let distro_profile = DistroProfile {
+        family: DistroFamily::DebianUbuntu,
+        name: "Test Ubuntu".to_string(),
+        firmware: FirmwareType::Uefi,
+        config_path: "/boot/grub/grub.cfg".to_string(),
+        update_command: "true".to_string(),
+        command_args: Vec::new(),
+        check_command: "true".to_string(),
+        check_command_args: Vec::new(),
+        grubenv_path: "/boot/grub/grubenv".to_string(),
+        set_default_command: set_cmd,
+    };
+
+    let service = GrubService::new_with_paths(config_file, backup_dir, distro_profile);
+    assert!(
+        service
+            .set_default_entry_fast("Ubuntu, with Linux 6.8.0")
+            .is_ok()
+    );
 }

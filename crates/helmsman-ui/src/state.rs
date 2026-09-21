@@ -69,6 +69,17 @@ impl AppState {
         self.draft_config.get("GRUB_DEFAULT")
     }
 
+    /// 检查当前系统配置是否启用了 saved 快速引导模式
+    pub fn is_saved_default_enabled(&self) -> bool {
+        self.draft_config.get("GRUB_DEFAULT") == Some("saved")
+    }
+
+    /// 启用 saved 快速引导模式（将 GRUB_DEFAULT 设为 saved，并启用 GRUB_SAVEDEFAULT）
+    pub fn enable_saved_default_mode(&mut self) {
+        self.draft_config.set("GRUB_DEFAULT", "saved");
+        self.draft_config.set("GRUB_SAVEDEFAULT", "true");
+    }
+
     /// 设置倒计时秒数
     pub fn set_timeout(&mut self, timeout_seconds: i32) {
         self.draft_config

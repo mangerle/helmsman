@@ -43,6 +43,10 @@ pub struct DistroProfile {
     pub check_command: String,
     /// 语法检查命令参数列表
     pub check_command_args: Vec<String>,
+    /// grubenv 环境变量文件绝对路径（例如："/boot/grub/grubenv"）
+    pub grubenv_path: String,
+    /// 快速修改默认启动项的系统命令（例如："grub-set-default"、"grub2-set-default"）
+    pub set_default_command: String,
 }
 
 impl DistroProfile {
@@ -146,6 +150,8 @@ fn build_profile_for_family(
             command_args: Vec::new(),
             check_command: "grub-script-check".to_string(),
             check_command_args: Vec::new(),
+            grubenv_path: "/boot/grub/grubenv".to_string(),
+            set_default_command: "grub-set-default".to_string(),
         },
         DistroFamily::Arch => DistroProfile {
             family,
@@ -156,11 +162,19 @@ fn build_profile_for_family(
             command_args: vec!["-o".to_string(), "/boot/grub/grub.cfg".to_string()],
             check_command: "grub-script-check".to_string(),
             check_command_args: Vec::new(),
+            grubenv_path: "/boot/grub/grubenv".to_string(),
+            set_default_command: "grub-set-default".to_string(),
         },
         DistroFamily::FedoraRhel => {
-            let config_path = match firmware {
-                FirmwareType::Uefi => "/boot/efi/EFI/fedora/grub.cfg".to_string(),
-                FirmwareType::Bios => "/boot/grub2/grub.cfg".to_string(),
+            let (config_path, grubenv_path) = match firmware {
+                FirmwareType::Uefi => (
+                    "/boot/efi/EFI/fedora/grub.cfg".to_string(),
+                    "/boot/efi/EFI/fedora/grubenv".to_string(),
+                ),
+                FirmwareType::Bios => (
+                    "/boot/grub2/grub.cfg".to_string(),
+                    "/boot/grub2/grubenv".to_string(),
+                ),
             };
             DistroProfile {
                 family,
@@ -171,6 +185,8 @@ fn build_profile_for_family(
                 command_args: vec!["-o".to_string(), config_path],
                 check_command: "grub2-script-check".to_string(),
                 check_command_args: Vec::new(),
+                grubenv_path,
+                set_default_command: "grub2-set-default".to_string(),
             }
         }
         DistroFamily::OpenSuse => DistroProfile {
@@ -182,6 +198,8 @@ fn build_profile_for_family(
             command_args: vec!["-o".to_string(), "/boot/grub2/grub.cfg".to_string()],
             check_command: "grub2-script-check".to_string(),
             check_command_args: Vec::new(),
+            grubenv_path: "/boot/grub2/grubenv".to_string(),
+            set_default_command: "grub2-set-default".to_string(),
         },
         DistroFamily::Generic => DistroProfile {
             family,
@@ -192,6 +210,8 @@ fn build_profile_for_family(
             command_args: vec!["-o".to_string(), "/boot/grub/grub.cfg".to_string()],
             check_command: "grub-script-check".to_string(),
             check_command_args: Vec::new(),
+            grubenv_path: "/boot/grub/grubenv".to_string(),
+            set_default_command: "grub-set-default".to_string(),
         },
     }
 }
