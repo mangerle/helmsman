@@ -28,6 +28,8 @@ fn test_service_apply_and_rollback() {
         config_path: "/boot/grub/grub.cfg".to_string(),
         update_command: "true".to_string(),
         command_args: Vec::new(),
+        check_command: "true".to_string(),
+        check_command_args: Vec::new(),
     };
 
     let service =
@@ -43,6 +45,7 @@ fn test_service_apply_and_rollback() {
     // 2. 提交事务（跳过命令执行）
     let options = TransactionOptions {
         skip_command_execution: true,
+        ..Default::default()
     };
     let result = service
         .apply_changes(new_config, "测试修改倒计时", &options)
@@ -82,6 +85,8 @@ fn test_service_package_manager_lock_blocks_apply() {
         config_path: "/boot/grub/grub.cfg".to_string(),
         update_command: "true".to_string(),
         command_args: Vec::new(),
+        check_command: "true".to_string(),
+        check_command_args: Vec::new(),
     };
 
     let service = GrubService::new_with_paths(config_file, backup_dir, distro_profile)
@@ -100,4 +105,59 @@ fn test_service_package_manager_lock_blocks_apply() {
         }
         _ => panic!("预期返回 PackageManagerLocked 错误"),
     }
+}
+
+#[test]
+fn test_service_syntax_check_failure_triggers_rollback() {
+    let (config_file, backup_dir) = get_service_test_dir("syntax_fail");
+    fs::write(&config_file, "GRUB_DEFAULT=0\n").unwrap();
+
+    let fake_cfg = backup_dir.join("grub.cfg");
+    fs::write(&fake_cfg, "broken content").unwrap();
+
+    #[cfg(windows)]
+    let (update_cmd, update_args) = (
+        "cmd".to_string(),
+        vec!["/c".to_string(), "exit 0".to_string()],
+    );
+    #[cfg(not(windows))]
+    let (update_cmd, update_args) = ("true".to_string(), Vec::new());
+
+    #[cfg(windows)]
+    let (check_cmd, check_args) = (
+        "cmd".to_string(),
+        vec!["/c".to_string(), "exit 1".to_string()],
+    );
+    #[cfg(not(windows))]
+    let (check_cmd, check_args) = ("false".to_string(), Vec::new());
+
+    let distro_profile = DistroProfile {
+        family: DistroFamily::DebianUbuntu,
+        name: "Test Ubuntu".to_string(),
+        firmware: FirmwareType::Uefi,
+        config_path: fake_cfg.to_string_lossy().to_string(),
+        update_command: update_cmd,
+        command_args: update_args,
+        check_command: check_cmd,
+        check_command_args: check_args,
+    };
+
+    let service = GrubService::new_with_paths(config_file.clone(), backup_dir, distro_profile);
+    let options = TransactionOptions::default();
+    let res = service
+        .apply_changes("GRUB_DEFAULT=1\n", "测试语法校验失败回滚", &options)
+        .unwrap();
+
+    // 验证事务失败并已自动回滚
+    assert!(!res.success);
+    assert!(
+        res.error_message
+            .as_deref()
+            .unwrap_or("")
+            .contains("已成功自动回滚")
+    );
+
+    // 验证原始文件内容已被恢复
+    let restored = fs::read_to_string(&config_file).unwrap();
+    assert_eq!(restored, "GRUB_DEFAULT=0\n");
 }

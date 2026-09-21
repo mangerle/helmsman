@@ -39,6 +39,10 @@ pub struct DistroProfile {
     pub update_command: String,
     /// 命令参数列表
     pub command_args: Vec<String>,
+    /// 引导脚本语法检查命令（例如："grub-script-check"、"grub2-script-check"）
+    pub check_command: String,
+    /// 语法检查命令参数列表
+    pub check_command_args: Vec<String>,
 }
 
 impl DistroProfile {
@@ -140,6 +144,8 @@ fn build_profile_for_family(
             config_path: "/boot/grub/grub.cfg".to_string(),
             update_command: "update-grub".to_string(),
             command_args: Vec::new(),
+            check_command: "grub-script-check".to_string(),
+            check_command_args: Vec::new(),
         },
         DistroFamily::Arch => DistroProfile {
             family,
@@ -148,6 +154,8 @@ fn build_profile_for_family(
             config_path: "/boot/grub/grub.cfg".to_string(),
             update_command: "grub-mkconfig".to_string(),
             command_args: vec!["-o".to_string(), "/boot/grub/grub.cfg".to_string()],
+            check_command: "grub-script-check".to_string(),
+            check_command_args: Vec::new(),
         },
         DistroFamily::FedoraRhel => {
             let config_path = match firmware {
@@ -161,6 +169,8 @@ fn build_profile_for_family(
                 config_path: config_path.clone(),
                 update_command: "grub2-mkconfig".to_string(),
                 command_args: vec!["-o".to_string(), config_path],
+                check_command: "grub2-script-check".to_string(),
+                check_command_args: Vec::new(),
             }
         }
         DistroFamily::OpenSuse => DistroProfile {
@@ -170,6 +180,8 @@ fn build_profile_for_family(
             config_path: "/boot/grub2/grub.cfg".to_string(),
             update_command: "grub2-mkconfig".to_string(),
             command_args: vec!["-o".to_string(), "/boot/grub2/grub.cfg".to_string()],
+            check_command: "grub2-script-check".to_string(),
+            check_command_args: Vec::new(),
         },
         DistroFamily::Generic => DistroProfile {
             family,
@@ -178,6 +190,8 @@ fn build_profile_for_family(
             config_path: "/boot/grub/grub.cfg".to_string(),
             update_command: "grub-mkconfig".to_string(),
             command_args: vec!["-o".to_string(), "/boot/grub/grub.cfg".to_string()],
+            check_command: "grub-script-check".to_string(),
+            check_command_args: Vec::new(),
         },
     }
 }

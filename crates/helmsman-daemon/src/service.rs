@@ -6,7 +6,7 @@ use grub_transaction_engine::{
 use std::error::Error;
 use std::fmt;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info, warn};
 
@@ -83,6 +83,8 @@ impl Error for DaemonError {}
 pub struct TransactionOptions {
     /// 是否跳过实际引导生成命令的执行（用于单元测试与模拟演练）
     pub skip_command_execution: bool,
+    /// 是否跳过引导脚本语法检查（用于测试模拟）
+    pub skip_syntax_check: bool,
 }
 
 /// 事务应用结果
@@ -203,13 +205,35 @@ impl GrubService {
             });
         }
 
-        self.execute_update_with_rollback(&snapshot)
+        self.execute_update_with_rollback(&snapshot, options)
     }
 
-    /// 执行引导更新命令并在失败时自动触发快照回滚
+    /// 校验生成的引导脚本语法（若系统支持）
+    fn verify_grub_script_syntax(&self, config_path: &Path) -> Result<(), String> {
+        let mut cmd = Command::new(&self.distro_profile.check_command);
+        cmd.args(&self.distro_profile.check_command_args);
+        cmd.arg(config_path);
+
+        let output = cmd.output().map_err(|e| {
+            format!(
+                "启动语法检查命令 '{}' 失败: {}",
+                self.distro_profile.check_command, e
+            )
+        })?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(format!("引导脚本语法校验未通过: {}", stderr.trim()))
+        }
+    }
+
+    /// 执行引导更新命令并在失败或语法不通过时自动触发快照回滚
     fn execute_update_with_rollback(
         &self,
         snapshot: &SnapshotMeta,
+        options: &TransactionOptions,
     ) -> Result<TransactionResult, DaemonError> {
         let mut cmd = Command::new(&self.distro_profile.update_command);
         cmd.args(&self.distro_profile.command_args);
@@ -221,7 +245,34 @@ impl GrubService {
                 let combined_log = format!("{}\n{}", stdout, stderr);
 
                 if output.status.success() {
-                    info!("引导更新命令执行成功，快照 ID: {}", snapshot.id);
+                    // 语法预校验：验证生成的引导脚本合法性
+                    if !options.skip_syntax_check {
+                        let target_path = Path::new(&self.distro_profile.config_path);
+                        if target_path.exists()
+                            && let Err(syntax_err) = self.verify_grub_script_syntax(target_path)
+                        {
+                            warn!(
+                                "引导脚本语法校验未通过，触发自动回滚，快照 ID: {}，原因: {}",
+                                snapshot.id, syntax_err
+                            );
+                            let rollback_err = restore_snapshot(snapshot)
+                                .err()
+                                .map(|e| format!("且自动回滚失败: {}", e))
+                                .unwrap_or_else(|| "已成功自动回滚至初始状态".to_string());
+
+                            return Ok(TransactionResult {
+                                success: false,
+                                snapshot_id: snapshot.id.clone(),
+                                log_output: format!("{}\n{}", combined_log, syntax_err),
+                                error_message: Some(format!("{}, {}", syntax_err, rollback_err)),
+                            });
+                        }
+                    }
+
+                    info!(
+                        "引导更新命令执行成功且语法校验通过，快照 ID: {}",
+                        snapshot.id
+                    );
                     Ok(TransactionResult {
                         success: true,
                         snapshot_id: snapshot.id.clone(),

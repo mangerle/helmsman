@@ -55,6 +55,7 @@ fn test_ubuntu_adapter() {
     assert_eq!(profile.family, DistroFamily::DebianUbuntu);
     assert_eq!(profile.name, "Ubuntu 24.04 LTS");
     assert_eq!(profile.update_command, "update-grub");
+    assert_eq!(profile.check_command, "grub-script-check");
     assert_eq!(profile.config_path, "/boot/grub/grub.cfg");
     assert!(profile.command_args.is_empty());
 }
