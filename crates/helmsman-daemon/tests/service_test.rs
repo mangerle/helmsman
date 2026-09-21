@@ -10,6 +10,7 @@ fn get_service_test_dir(name: &str) -> (PathBuf, PathBuf) {
 
     let config_file = base.join("default_grub");
     let backup_dir = base.join("backups");
+    fs::create_dir_all(&backup_dir).unwrap();
     (config_file, backup_dir)
 }
 
@@ -61,4 +62,42 @@ fn test_service_apply_and_rollback() {
     service.rollback_to_snapshot(&result.snapshot_id).unwrap();
     let restored_content = fs::read_to_string(&config_file).unwrap();
     assert_eq!(restored_content, "GRUB_DEFAULT=0\nGRUB_TIMEOUT=0\n");
+}
+
+#[test]
+fn test_service_package_manager_lock_blocks_apply() {
+    use grub_transaction_engine::{LockDescriptor, PackageManagerType};
+    use helmsman_daemon::DaemonError;
+
+    let (config_file, backup_dir) = get_service_test_dir("lock_block");
+    fs::write(&config_file, "GRUB_DEFAULT=0\n").unwrap();
+
+    let fake_lock = backup_dir.join("pacman_fake.lck");
+    fs::write(&fake_lock, "busy").unwrap();
+
+    let distro_profile = DistroProfile {
+        family: DistroFamily::Arch,
+        name: "Test Arch".to_string(),
+        firmware: FirmwareType::Uefi,
+        config_path: "/boot/grub/grub.cfg".to_string(),
+        update_command: "true".to_string(),
+        command_args: Vec::new(),
+    };
+
+    let service = GrubService::new_with_paths(config_file, backup_dir, distro_profile)
+        .with_lock_descriptors(vec![LockDescriptor::existence(
+            PackageManagerType::Pacman,
+            &fake_lock,
+        )]);
+
+    let options = TransactionOptions::default();
+    let res = service.apply_changes("GRUB_DEFAULT=1\n", "测试被锁拦截", &options);
+
+    assert!(res.is_err());
+    match res {
+        Err(DaemonError::PackageManagerLocked { message }) => {
+            assert!(message.contains("pacman"));
+        }
+        _ => panic!("预期返回 PackageManagerLocked 错误"),
+    }
 }

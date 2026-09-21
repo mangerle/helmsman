@@ -1,7 +1,7 @@
 use grub_distro_adapter::DistroProfile;
 use grub_transaction_engine::{
-    DiffReport, SnapshotMeta, atomic_write, create_snapshot, generate_unified_diff, list_snapshots,
-    restore_snapshot,
+    DiffReport, LockDescriptor, SnapshotMeta, atomic_write, check_package_manager_locks,
+    create_snapshot, default_system_locks, generate_unified_diff, list_snapshots, restore_snapshot,
 };
 use std::error::Error;
 use std::fmt;
@@ -21,6 +21,8 @@ pub enum DaemonError {
     ConfigReadFailed { path: PathBuf, reason: String },
     /// 配置文件不存在
     ConfigNotFound { path: PathBuf },
+    /// 包管理器互斥锁冲突
+    PackageManagerLocked { message: String },
     /// 快照创建失败
     SnapshotFailed { reason: String },
     /// 原子写入失败
@@ -48,6 +50,9 @@ impl fmt::Display for DaemonError {
             }
             DaemonError::ConfigNotFound { path } => {
                 write!(f, "配置文件不存在，路径: {}", path.display())
+            }
+            DaemonError::PackageManagerLocked { message } => {
+                write!(f, "无法执行引导修改，{}", message)
             }
             DaemonError::SnapshotFailed { reason } => {
                 write!(f, "创建配置快照失败，原因: {}", reason)
@@ -101,6 +106,8 @@ pub struct GrubService {
     pub backup_dir: PathBuf,
     /// 跨发行版档案
     pub distro_profile: DistroProfile,
+    /// 需检测的包管理器锁描述符列表
+    pub lock_descriptors: Vec<LockDescriptor>,
 }
 
 impl GrubService {
@@ -111,6 +118,7 @@ impl GrubService {
             default_config_path: PathBuf::from("/etc/default/grub"),
             backup_dir: PathBuf::from("/var/backups/grub-manager"),
             distro_profile,
+            lock_descriptors: default_system_locks(),
         }
     }
 
@@ -124,7 +132,14 @@ impl GrubService {
             default_config_path,
             backup_dir,
             distro_profile,
+            lock_descriptors: Vec::new(),
         }
+    }
+
+    /// 链式配置自定义锁描述符列表（用于测试或非标准环境）
+    pub fn with_lock_descriptors(mut self, descriptors: Vec<LockDescriptor>) -> Self {
+        self.lock_descriptors = descriptors;
+        self
     }
 
     /// 预览配置差异 (Diff)
@@ -156,6 +171,13 @@ impl GrubService {
                 path: self.default_config_path.clone(),
             });
         }
+
+        // 检查包管理器并发互斥锁，避免与系统更新冲突
+        check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
+            DaemonError::PackageManagerLocked {
+                message: e.to_string(),
+            }
+        })?;
 
         debug!("开始准备配置变更事务，原因: {}", reason);
 
