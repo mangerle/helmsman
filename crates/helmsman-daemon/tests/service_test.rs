@@ -198,3 +198,45 @@ fn test_service_set_default_entry_fast() {
             .is_ok()
     );
 }
+
+#[test]
+fn test_service_command_timeout_triggers_rollback() {
+    let (config_file, backup_dir) = get_service_test_dir("timeout_rollback");
+    fs::write(&config_file, "GRUB_DEFAULT=0\n").unwrap();
+
+    // 模拟耗时超过超时的命令
+    #[cfg(windows)]
+    let (slow_cmd, slow_args) = (
+        "cmd".to_string(),
+        vec!["/c".to_string(), "ping 127.0.0.1 -n 4 > nul".to_string()],
+    );
+    #[cfg(not(windows))]
+    let (slow_cmd, slow_args) = ("sleep".to_string(), vec!["3".to_string()]);
+
+    let distro_profile = DistroProfile {
+        family: DistroFamily::DebianUbuntu,
+        name: "Test Ubuntu".to_string(),
+        firmware: FirmwareType::Uefi,
+        config_path: "/boot/grub/grub.cfg".to_string(),
+        update_command: slow_cmd,
+        command_args: slow_args,
+        check_command: "true".to_string(),
+        check_command_args: Vec::new(),
+        grubenv_path: "/boot/grub/grubenv".to_string(),
+        set_default_command: "true".to_string(),
+    };
+
+    let service = GrubService::new_with_paths(config_file.clone(), backup_dir, distro_profile);
+    // 设限超时为 1 秒，预期会超时
+    let options = TransactionOptions {
+        timeout_seconds: Some(1),
+        ..Default::default()
+    };
+
+    let res = service.apply_changes("GRUB_DEFAULT=1\n", "测试命令超时", &options);
+
+    // 预期返回 CommandLaunchFailed 且原配置已被恢复
+    assert!(res.is_err());
+    let restored = fs::read_to_string(&config_file).unwrap();
+    assert_eq!(restored, "GRUB_DEFAULT=0\n");
+}

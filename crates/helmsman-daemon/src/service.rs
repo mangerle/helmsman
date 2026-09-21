@@ -90,6 +90,8 @@ pub struct TransactionOptions {
     pub skip_command_execution: bool,
     /// 是否跳过引导脚本语法检查（用于测试模拟）
     pub skip_syntax_check: bool,
+    /// 引导生成任务设限超时秒数（默认为 60 秒）
+    pub timeout_seconds: Option<u64>,
 }
 
 /// 事务应用结果
@@ -251,7 +253,8 @@ impl GrubService {
             }
         };
 
-        match cmd.output() {
+        let timeout = std::time::Duration::from_secs(options.timeout_seconds.unwrap_or(60));
+        match cmd.output_with_timeout(timeout) {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -316,7 +319,7 @@ impl GrubService {
                 }
             }
             Err(e) => {
-                warn!("启动更新命令失败，触发自动回滚，原因: {}", e);
+                warn!("更新命令执行失败或超时，触发自动回滚，原因: {}", e);
                 let _ = restore_snapshot(snapshot);
                 Err(DaemonError::CommandLaunchFailed {
                     command: self.distro_profile.update_command.clone(),

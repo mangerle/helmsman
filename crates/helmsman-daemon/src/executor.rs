@@ -129,6 +129,84 @@ impl SafeCommand {
         cmd.args(&self.args);
         cmd.output()
     }
+
+    /// 带设限超时执行命令，若超时则主动终止并收割子进程，杜绝僵尸进程残留
+    ///
+    /// # 设计原理
+    /// - **实现初衷**：grub-mkconfig 可能因挂载故障或磁盘坏道而假死，必须设限超时并可靠回收。
+    /// - **核心优势**：双管道异步消费防止大输出死锁，超时后显式调用 `.kill()` 和 `.wait()` 彻底收割进程控制块。
+    ///
+    /// # Errors
+    /// 当子进程启动失败、超时或等待异常时返回 `io::Error`（超时返回 `ErrorKind::TimedOut`）。
+    pub fn output_with_timeout(&self, timeout: std::time::Duration) -> io::Result<Output> {
+        debug!(
+            "带超时 ({:?}) 执行特权白名单命令: {} {:?}",
+            timeout, self.program, self.args
+        );
+        let mut cmd = Command::new(&self.program);
+        cmd.args(&self.args);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        let mut child = cmd.spawn()?;
+
+        let mut stdout_handle = None;
+        let mut stderr_handle = None;
+
+        if let Some(mut out) = child.stdout.take() {
+            stdout_handle = Some(std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                use std::io::Read;
+                let _ = out.read_to_end(&mut buf);
+                buf
+            }));
+        }
+
+        if let Some(mut err) = child.stderr.take() {
+            stderr_handle = Some(std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                use std::io::Read;
+                let _ = err.read_to_end(&mut buf);
+                buf
+            }));
+        }
+
+        let start = std::time::Instant::now();
+        loop {
+            match child.try_wait()? {
+                Some(status) => {
+                    let stdout = stdout_handle
+                        .and_then(|h| h.join().ok())
+                        .unwrap_or_default();
+                    let stderr = stderr_handle
+                        .and_then(|h| h.join().ok())
+                        .unwrap_or_default();
+                    return Ok(Output {
+                        status,
+                        stdout,
+                        stderr,
+                    });
+                }
+                None => {
+                    if start.elapsed() >= timeout {
+                        warn!(
+                            "特权命令执行超时 ({:?})，正在终止子进程 PID: {}",
+                            timeout,
+                            child.id()
+                        );
+                        let _ = child.kill();
+                        // 强制收割子进程退出状态，杜绝僵尸进程
+                        let _ = child.wait();
+                        return Err(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            format!("特权命令执行超时 ({:?})，已强制终止并回收子进程", timeout),
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            }
+        }
+    }
 }
 
 /// 检查程序是否在受信任白名单中
