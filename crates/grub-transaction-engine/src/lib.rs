@@ -3,6 +3,7 @@ pub mod diff;
 pub mod disk;
 pub mod lock;
 pub mod snapshot;
+pub mod theme_extractor;
 
 pub use atomic::atomic_write;
 pub use diff::{DiffReport, generate_unified_diff};
@@ -12,3 +13,7 @@ pub use lock::{
     check_single_lock, default_system_locks,
 };
 pub use snapshot::{SnapshotMeta, create_snapshot, list_snapshots, restore_snapshot};
+pub use theme_extractor::{
+    ThemeSecurityError, extract_safe_entries, install_theme_directory, validate_entry_path,
+    validate_theme_directory, validate_theme_name,
+};
