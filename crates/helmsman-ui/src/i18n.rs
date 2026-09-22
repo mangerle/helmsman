@@ -20,7 +20,8 @@ impl Language {
         } else if lower.starts_with("en") {
             Language::EnUs
         } else {
-            Language::ZhCn
+            // 未知语言默认英文，避免非中文环境被强制中文
+            Language::EnUs
         }
     }
 
@@ -139,7 +140,7 @@ where
             return Language::from_locale(&val);
         }
     }
-    Language::ZhCn
+    Language::EnUs
 }
 
 #[cfg(test)]
@@ -152,7 +153,7 @@ mod tests {
         assert_eq!(Language::from_locale("zh_TW"), Language::ZhCn);
         assert_eq!(Language::from_locale("en_US.UTF-8"), Language::EnUs);
         assert_eq!(Language::from_locale("en_GB"), Language::EnUs);
-        assert_eq!(Language::from_locale("fr_FR.UTF-8"), Language::ZhCn);
+        assert_eq!(Language::from_locale("fr_FR.UTF-8"), Language::EnUs);
     }
 
     #[test]
@@ -192,6 +193,6 @@ mod tests {
         assert_eq!(en, Language::EnUs);
 
         let fallback = detect_language_from_lookup(|_| None);
-        assert_eq!(fallback, Language::ZhCn);
+        assert_eq!(fallback, Language::EnUs);
     }
 }
