@@ -158,6 +158,29 @@ impl HelmsmanDbusAdapter {
         .map_err(|e| HelmsmanDbusError::Failed(format!("配置读取任务异常终止: {e}")))?
     }
 
+    /// 读取编译后的引导菜单（grub.cfg）原文
+    ///
+    /// # 设计原理
+    /// 菜单路径由 Distro Adapter 认定，集中在此读出，前端零文件访问。
+    pub async fn get_boot_cfg(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<String, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        let boot_cfg_path = self.service.distro_profile.config_path.clone();
+        tokio::task::spawn_blocking(move || {
+            std::fs::read_to_string(&boot_cfg_path).map_err(|e| {
+                HelmsmanDbusError::Failed(format!(
+                    "读取引导菜单失败，路径: {boot_cfg_path}，原因: {e}"
+                ))
+            })
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("引导菜单读取任务异常终止: {e}")))?
+    }
+
     /// 查询服务版本号
     pub async fn get_version(
         &self,

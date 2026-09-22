@@ -20,6 +20,13 @@ pub trait HelmsmanApi {
     /// 读取当前 /etc/default/grub 原文
     fn get_current_config(&self) -> zbus::Result<String>;
 
+    /// 读取编译后的引导菜单（grub.cfg）原文
+    ///
+    /// # 设计原理
+    /// UI 不得直读磁盘上的 grub.cfg；路径由守护进程 Distro Adapter 认定，
+    /// 保证与特权侧视图一致，杜绝前端拼接错误路径。
+    fn get_boot_cfg(&self) -> zbus::Result<String>;
+
     /// 查询服务版本号
     fn get_version(&self) -> zbus::Result<String>;
 
