@@ -4,7 +4,7 @@ pub mod parser;
 pub mod theme;
 
 pub use custom::{
-    CustomBootEntry, HELMSMAN_CUSTOM_HEADER, entry_types, generate_custom_script,
+    CustomBootEntry, CustomEntryError, HELMSMAN_CUSTOM_HEADER, entry_types, generate_custom_script,
     parse_custom_script,
 };
 pub use model::{BootEntry, MenuNode};

@@ -83,4 +83,10 @@ pub enum DaemonError {
         /// 失败原因
         reason: String,
     },
+    /// 自定义引导项字段未通过安全校验
+    #[error("自定义引导项校验失败，原因: {reason}")]
+    CustomEntryInvalid {
+        /// 校验失败原因
+        reason: String,
+    },
 }

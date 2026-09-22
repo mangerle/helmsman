@@ -100,7 +100,10 @@ impl CustomManager {
         caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
         let start_time = Instant::now();
-        let new_script_content = generate_custom_script(entries);
+        let new_script_content =
+            generate_custom_script(entries).map_err(|e| DaemonError::CustomEntryInvalid {
+                reason: e.to_string(),
+            })?;
 
         let res = (|| -> Result<TransactionResult, DaemonError> {
             // 确保父目录存在
