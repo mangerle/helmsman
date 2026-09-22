@@ -433,6 +433,7 @@ name = "grub-boot-reader"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "thiserror",
  "zvariant",
 ]
 
@@ -503,7 +504,6 @@ dependencies = [
  "grub-config-parser",
  "grub-distro-adapter",
  "grub-transaction-engine",
- "helmsman-client",
 ]
 
 [[package]]
