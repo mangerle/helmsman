@@ -8,6 +8,82 @@ use tracing::{debug, info};
 
 /// 主题安装、快照回滚与默认项切换等系统运维操作
 impl GrubService {
+    /// 校验主题压缩包源路径是否位于允许的用户可读沙箱目录内
+    ///
+    /// # 设计原理
+    /// - **实现初衷**：D-Bus 客户端可传入任意本地路径，守护进程以 root 读取会造成任意文件读取与大文件 DoS。
+    /// - **核心优势**：仅接受临时目录、用户主目录与运行时目录下的普通文件，并限制体积上限。
+    /// - **代价与局限**：不支持通过 FileDescriptor/portal 直传，调用方需先把压缩包落到允许目录。
+    fn validate_theme_archive_source(path: &Path, caller_uid: u32) -> Result<(), DaemonError> {
+        let canonical = path
+            .canonicalize()
+            .map_err(|e| DaemonError::ThemeInstallFailed {
+                reason: format!("主题压缩包路径无法解析 '{}': {}", path.display(), e),
+            })?;
+
+        let meta = std::fs::metadata(&canonical).map_err(|e| DaemonError::ThemeInstallFailed {
+            reason: format!("无法读取主题压缩包元数据 '{}': {}", canonical.display(), e),
+        })?;
+
+        if !meta.is_file() {
+            return Err(DaemonError::ThemeInstallFailed {
+                reason: format!("主题压缩包不是普通文件: {}", canonical.display()),
+            });
+        }
+
+        const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
+        if meta.len() > MAX_ARCHIVE_BYTES {
+            return Err(DaemonError::ThemeInstallFailed {
+                reason: format!(
+                    "主题压缩包过大 ({} 字节)，上限 {} 字节",
+                    meta.len(),
+                    MAX_ARCHIVE_BYTES
+                ),
+            });
+        }
+
+        let mut allowed_roots: Vec<std::path::PathBuf> = Vec::with_capacity(4);
+        allowed_roots.push(std::env::temp_dir());
+        allowed_roots.push(std::path::PathBuf::from("/tmp"));
+        allowed_roots.push(std::path::PathBuf::from("/var/tmp"));
+        allowed_roots.push(std::path::PathBuf::from(format!("/run/user/{caller_uid}")));
+        if let Ok(home) = std::env::var("HOME") {
+            allowed_roots.push(std::path::PathBuf::from(home));
+        }
+
+        // Windows 下 canonicalize 会得到 \\?\ 前缀路径，允许根目录同样规范化后再比较
+        let under_allowed = allowed_roots.iter().any(|root| {
+            let root_canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
+            canonical.starts_with(root_canonical)
+        });
+        if !under_allowed {
+            return Err(DaemonError::ThemeInstallFailed {
+                reason: format!(
+                    "主题压缩包必须位于临时目录、用户主目录或运行时目录内，当前路径: {}",
+                    canonical.display()
+                ),
+            });
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let owner = meta.uid();
+            if owner != 0 && owner != caller_uid {
+                return Err(DaemonError::ThemeInstallFailed {
+                    reason: format!(
+                        "主题压缩包属主 UID {} 与调用方 UID {} 不一致: {}",
+                        owner,
+                        caller_uid,
+                        canonical.display()
+                    ),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
     /// 从压缩包安全安装主题至系统主题目录（审计 UID 取自进程环境回退）
     ///
     /// # Errors
@@ -31,6 +107,19 @@ impl GrubService {
         caller_uid: u32,
     ) -> Result<PathBuf, DaemonError> {
         let start_time = Instant::now();
+        Self::validate_theme_archive_source(archive_path, caller_uid).inspect_err(|e| {
+            let err_msg = e.to_string();
+            record_audit_event(&AuditEvent {
+                caller_uid,
+                action: AuditAction::InstallTheme,
+                reason: format!("主题安装路径校验失败: {}", err_msg),
+                snapshot_id: None,
+                success: false,
+                duration: start_time.elapsed(),
+                diff_summary: None,
+            });
+        })?;
+
         let installed = grub_transaction_engine::install_theme_from_archive(
             archive_path,
             &self.themes_dir,
