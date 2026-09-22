@@ -67,11 +67,9 @@ pub(crate) fn execute_update_with_rollback(
                             .map(|e| format!("且自动回滚失败: {}", e))
                             .unwrap_or_else(|| "已成功自动回滚至初始状态".to_string());
 
-                        return Ok(TransactionResult {
-                            success: false,
-                            snapshot_id: snapshot.id.clone(),
-                            log_output: format!("{}\n{}", combined_log, syntax_err),
-                            error_message: Some(format!("{}, {}", syntax_err, rollback_err)),
+                        return Err(DaemonError::CommandLaunchFailed {
+                            command: service.distro_profile.update_command.clone(),
+                            reason: format!("{}, {}", syntax_err, rollback_err),
                         });
                     }
                 }
@@ -97,15 +95,13 @@ pub(crate) fn execute_update_with_rollback(
                     .map(|e| format!("且自动回滚失败: {}", e))
                     .unwrap_or_else(|| "已成功自动回滚至初始状态".to_string());
 
-                Ok(TransactionResult {
-                    success: false,
-                    snapshot_id: snapshot.id.clone(),
-                    log_output: combined_log,
-                    error_message: Some(format!(
+                Err(DaemonError::CommandLaunchFailed {
+                    command: service.distro_profile.update_command.clone(),
+                    reason: format!(
                         "引导生成命令退出码非零 ({:?})，{}",
                         output.status.code(),
                         rollback_err
-                    )),
+                    ),
                 })
             }
         }

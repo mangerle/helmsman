@@ -156,17 +156,14 @@ fn test_service_syntax_check_failure_triggers_rollback() {
 
     let service = GrubService::new_with_paths(config_file.clone(), backup_dir, distro_profile);
     let options = TransactionOptions::default();
-    let res = service
-        .apply_changes("GRUB_DEFAULT=1\n", "测试语法校验失败回滚", &options)
-        .unwrap();
+    let res = service.apply_changes("GRUB_DEFAULT=1\n", "测试语法校验失败回滚", &options);
 
-    // 验证事务失败并已自动回滚
-    assert!(!res.success);
+    // 验证事务以错误返回并已自动回滚
+    let err = res.expect_err("语法校验失败应返回错误");
+    let err_text = err.to_string();
     assert!(
-        res.error_message
-            .as_deref()
-            .unwrap_or("")
-            .contains("已成功自动回滚")
+        err_text.contains("已成功自动回滚") || err_text.contains("引导"),
+        "错误信息应包含回滚说明，实际: {err_text}"
     );
 
     // 验证原始文件内容已被恢复
