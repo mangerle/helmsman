@@ -1,0 +1,2782 @@
+<!-- AI生成 -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Helmsman 界面原型</title>
+<style>
+  :root {
+    --bg: #1c1c1f;
+    --bg-deep: #121218;
+    --surface: #252529;
+    --surface-2: #2a2a30;
+    --surface-3: #2f2f36;
+    --line: #3a3a40;
+    --text: #e8e8ec;
+    --text-2: #c8c8d0;
+    --text-3: #8b8b96;
+    --accent: #2563eb;
+    --accent-2: #0284c7;
+    --accent-soft: #06b6d4;
+    --brand-grad: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+    --brand-grad-hover: linear-gradient(135deg, #1d4ed8 0%, #0891b2 100%);
+    --warn: #d4a017;
+    --warn-bg: #3a3218;
+    --danger: #c45c5c;
+    --danger-bg: #3a2222;
+    --ok: #5a9e6f;
+    --ok-bg: #1e3326;
+    --diff-add-bg: #1e3326;
+    --diff-add: #7dcea0;
+    --diff-del-bg: #3a2222;
+    --diff-del: #e07a7a;
+    --diff-ctx: #8b8b96;
+    --mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace;
+    --sans: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --page-bg: #0e0e12;
+  }
+
+  /* 浅色主题 */
+  html[data-theme="light"] {
+    --bg: #f3f3f6;
+    --bg-deep: #e6e6ec;
+    --surface: #ffffff;
+    --surface-2: #ececf1;
+    --surface-3: #e0e0e8;
+    --line: #c8c8d2;
+    --text: #1c1c22;
+    --text-2: #3c3c46;
+    --text-3: #6c6c78;
+    --accent: #2563eb;
+    --accent-2: #0284c7;
+    --accent-soft: #06b6d4;
+    --brand-grad: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+    --brand-grad-hover: linear-gradient(135deg, #1d4ed8 0%, #0891b2 100%);
+    --warn: #9a7400;
+    --warn-bg: #f5ecd0;
+    --danger: #b33c3c;
+    --danger-bg: #f7e0e0;
+    --ok: #2f7a48;
+    --ok-bg: #dff0e5;
+    --diff-add-bg: #dff0e5;
+    --diff-add: #1f6b3a;
+    --diff-del-bg: #f7e0e0;
+    --diff-del: #a33;
+    --diff-ctx: #6c6c78;
+    --page-bg: #dcdce4;
+  }
+
+  /* 高对比度主题 */
+  html[data-theme="hc"] {
+    --bg: #000000;
+    --bg-deep: #000000;
+    --surface: #0a0a0a;
+    --surface-2: #151515;
+    --surface-3: #222222;
+    --line: #ffffff;
+    --text: #ffffff;
+    --text-2: #f2f2f2;
+    --text-3: #e0e0e0;
+    --accent: #7ec8ff;
+    --accent-2: #4aa3e8;
+    --accent-soft: #9ad4ff;
+    --warn: #ffd24a;
+    --warn-bg: #3a3200;
+    --danger: #ff8a8a;
+    --danger-bg: #3a0000;
+    --ok: #7dffa0;
+    --ok-bg: #003a12;
+    --diff-add-bg: #003a12;
+    --diff-add: #7dffa0;
+    --diff-del-bg: #3a0000;
+    --diff-del: #ff8a8a;
+    --diff-ctx: #e0e0e0;
+    --page-bg: #000000;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--page-bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: var(--surface-3);
+    border-radius: 6px;
+    padding: 6px 12px;
+  }
+  button:hover { background: var(--surface-3); }
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  button.primary {
+    background: var(--brand-grad);
+    border: none;
+    color: #ffffff;
+  }
+  button.primary:hover {
+    background: var(--brand-grad-hover);
+  }
+  button.ghost {
+    background: transparent;
+  }
+  button.danger {
+    background: var(--danger);
+    border-color: #a04848;
+    color: #fff;
+  }
+
+  .app {
+    max-width: 980px;
+    height: min(640px, 100vh - 32px);
+    margin: 16px auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  }
+
+  .app-main {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .nav-rail {
+    width: 160px;
+    flex: 0 0 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 8px;
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+    min-height: 0;
+    position: relative;
+    transition: width 0.15s ease, flex-basis 0.15s ease, padding 0.15s ease;
+  }
+  .nav-rail.collapsed {
+    width: 56px;
+    flex-basis: 56px;
+    padding: 10px 6px;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .content-col {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    min-height: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+  .brand {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .brand img {
+    width: 20px;
+    height: 20px;
+    display: block;
+    flex-shrink: 0;
+  }
+  .brand .brand-text {
+    color: var(--text);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .nav-toggle {
+    background: rgba(240, 240, 245, 0.6);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(200, 200, 210, 0.5);
+    color: var(--text-3);
+    padding: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    opacity: 0.65;
+    transition: all 0.15s ease;
+  }
+  .nav-toggle:hover {
+    background: var(--surface);
+    opacity: 1;
+    color: var(--text);
+    border-color: var(--accent-soft);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  }
+  .nav-edge-toggle {
+    position: absolute;
+    top: 14px;
+    right: -10px;
+    z-index: 3;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
+  .nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .nav-bottom {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .nav button {
+    background: var(--surface-2);
+    border: none;
+    border-left: 3px solid transparent;
+    color: var(--text-2);
+    padding: 9px 12px;
+    border-radius: 6px;
+    text-align: left;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    display: block;
+  }
+  .nav-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+  }
+  .nav-rail.collapsed .nav-label {
+    display: none;
+  }
+  .nav-rail.collapsed .nav button {
+    justify-content: center;
+    padding: 10px 8px;
+    border-left: none;
+    border-radius: 8px;
+  }
+  .nav-rail.collapsed .nav button.active {
+    border-left: none;
+  }
+  .nav-rail.collapsed .nav-toggle .nav-icon {
+    transform: rotate(180deg);
+  }
+  .nav button:hover {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .nav button.active {
+    background: var(--brand-grad);
+    border-left-color: transparent;
+    color: #ffffff;
+    font-weight: 700;
+  }
+  .nav button.active .nav-icon {
+    stroke: #ffffff;
+  }
+  .titlebar .window-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .win-btn {
+    width: 28px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-2);
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .win-btn:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .win-btn.close:hover {
+    background: #e81123;
+    color: #ffffff;
+  }
+
+  .body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .sidebar {
+    width: 320px;
+    min-width: 260px;
+    max-width: 360px;
+    flex: 0 0 320px;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .sidebar.hidden { display: none; }
+
+  .side-head {
+    padding: 12px 14px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .side-head-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .side-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .side-head-actions .icon-btn,
+  .side-head-actions #btn-add-custom {
+    height: 26px;
+    box-sizing: border-box;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--text-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .side-head-actions .icon-btn {
+    width: 26px;
+    padding: 0;
+  }
+  .side-head-actions #btn-add-custom {
+    padding: 0 8px;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .side-head-actions .icon-btn:hover:not(:disabled),
+  .side-head-actions #btn-add-custom:hover:not(:disabled) {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--accent-soft);
+  }
+  .side-head-actions .icon-btn:disabled,
+  .side-head-actions #btn-add-custom:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    border-color: var(--line);
+  }
+  .side-head-actions .icon-btn svg {
+    pointer-events: none;
+  }
+
+  .entry-list {
+    flex: 1;
+    overflow: auto;
+    padding: 0 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .entry {
+    text-align: left;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 6px;
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+    color: var(--text-2);
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .entry:hover {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .entry.selected {
+    background: var(--brand-grad);
+    border-color: var(--accent-soft);
+    color: #ffffff;
+    font-weight: 700;
+  }
+  .entry.selected .badge-default {
+    background: #ffffff;
+    color: var(--accent-2);
+  }
+  .entry .title {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+  }
+  .entry .badge-default {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--brand-grad);
+    color: #ffffff;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    color: var(--text-3);
+    border: 1px solid var(--line);
+  }
+  .badge.default {
+    background: var(--accent);
+    border-color: #4a6a94;
+    color: var(--text);
+  }
+  .badge.recovery {
+    background: var(--warn-bg);
+    border-color: #6a5420;
+    color: var(--warn);
+  }
+  .badge.custom {
+    background: var(--ok-bg);
+    border-color: #2f5a40;
+    color: var(--ok);
+  }
+
+  .side-foot {
+    border-top: 1px solid var(--line);
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .side-foot-title {
+    color: var(--text-3);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+  }
+  .side-foot-title:first-child {
+    margin-top: 0;
+  }
+  .compact-field {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 6px;
+    align-items: center;
+    color: var(--text-2);
+    font-size: 11px;
+  }
+  .compact-field input,
+  .compact-field select {
+    width: 100%;
+    min-width: 0;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .side-foot .switch-row {
+    font-size: 11px;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    border: 1px solid var(--line);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .switch.on {
+    background: var(--brand-grad);
+    border-color: var(--accent-soft);
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-2);
+  }
+  .switch.on::after {
+    left: 18px;
+    background: #fff;
+  }
+
+  .main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page {
+    flex: 1;
+    min-height: 0;
+    display: none;
+  }
+  .page.active { display: flex; }
+
+  .page-entries {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .page-entries > .panel {
+    flex: 1 1 280px;
+    min-width: 260px;
+  }
+
+  .preview-col {
+    width: 340px;
+    min-width: 280px;
+    max-width: 380px;
+    flex: 0 0 340px;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg);
+  }
+
+  .panel {
+    padding: 16px 20px;
+    overflow: auto;
+    min-width: 0;
+    word-break: break-word;
+  }
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .page-header-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .page-header h2 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .page-header .sub {
+    margin: 0;
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .badge-status {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-3);
+    background: var(--surface-2);
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .badge-status.badge-accent {
+    color: #2563eb;
+    background: rgba(37, 99, 235, 0.08);
+    border-color: rgba(37, 99, 235, 0.25);
+    font-weight: 600;
+  }
+  html[data-theme="dark"] .badge-status.badge-accent {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.3);
+  }
+  .table-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .table-card table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .table-card th {
+    background: var(--surface);
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--text-3);
+    font-weight: 600;
+    border-bottom: 1px solid var(--line);
+  }
+  .table-card td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+    font-size: 12px;
+  }
+  .table-card tr:last-child td {
+    border-bottom: none;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .field label {
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .field input[type="text"],
+  .field input[type="number"],
+  .field select,
+  .field textarea {
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 10px;
+    outline: none;
+  }
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    border-color: var(--accent-soft);
+  }
+  .field .hint {
+    color: var(--text-3);
+    font-size: 11px;
+  }
+  .combo-row {
+    display: flex;
+    gap: 8px;
+  }
+  .combo-row select {
+    flex: 0 0 150px;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 8px;
+  }
+  .combo-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 10px;
+    outline: none;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .combo-row input:focus,
+  .combo-row select:focus {
+    border-color: var(--accent-soft);
+  }
+  .theme-box {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-2);
+    padding: 10px;
+  }
+  .theme-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 148px;
+    overflow: auto;
+    margin-bottom: 8px;
+  }
+  .theme-item {
+    text-align: left;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 6px;
+    padding: 7px 8px;
+  }
+  .theme-item:hover { background: var(--surface-3); }
+  .theme-item.selected {
+    background: var(--brand-grad);
+    border-color: var(--accent-soft);
+    color: #ffffff;
+  }
+  .theme-item.selected .path {
+    color: rgba(255, 255, 255, 0.8);
+  }
+  .theme-item .name {
+    font-size: 12px;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .theme-item .path {
+    color: var(--text-3);
+    font-size: 10px;
+    font-family: var(--mono);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 6px 10px;
+    color: var(--text-2);
+    font-size: 12px;
+    margin-bottom: 14px;
+  }
+  .kv b {
+    color: var(--text-3);
+    font-weight: 400;
+  }
+  .kv code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-2);
+    word-break: break-all;
+  }
+
+  .row-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .preview-box {
+    border-top: 1px solid var(--line);
+    padding: 12px 16px 14px;
+    background: var(--surface);
+  }
+  .preview-box .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    color: var(--text-3);
+    font-size: 11px;
+  }
+
+  .grub-canvas {
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    aspect-ratio: 16 / 10;
+    width: 100%;
+    max-width: 100%;
+    min-height: 160px;
+    position: relative;
+    overflow: hidden;
+  }
+  .grub-canvas.large {
+    aspect-ratio: 16 / 9;
+    min-height: 360px;
+  }
+  .grub-screen {
+    position: absolute;
+    inset: 8%;
+    background: #0a0a10;
+    border: 1px solid #222;
+    border-radius: 2px;
+    padding: 8% 10%;
+    color: #c8c8d0;
+  }
+  .grub-screen.has-bg {
+    background:
+      linear-gradient(135deg, rgba(20, 30, 50, 0.55), rgba(8, 8, 14, 0.92)),
+      #0a0a10;
+  }
+  .grub-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    margin-bottom: 10px;
+    color: #9aa4b5;
+  }
+  .grub-item {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 3px 6px;
+    color: #c8c8d0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .grub-item.selected {
+    color: #f5c542;
+    background: rgba(245, 197, 66, 0.08);
+  }
+  .grub-progress {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: 12%;
+    height: 3px;
+    background: #2a2a32;
+  }
+  .grub-progress > i {
+    display: block;
+    height: 100%;
+    background: var(--accent-soft);
+    width: 60%;
+  }
+  .grub-hidden {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-3);
+    font-size: 12px;
+    background: #0a0a10;
+  }
+  .grub-canvas.silent .grub-hidden { display: flex; }
+  .grub-canvas.silent .grub-screen,
+  .grub-canvas.silent .grub-progress { display: none; }
+
+  .wide-page {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .form-col {
+    width: 100%;
+    max-width: none;
+    flex: 1 1 auto;
+    border-right: none;
+    overflow: auto;
+    padding: 16px 20px;
+  }
+  .preview-col {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .preview-col .stage {
+    flex: 1;
+    padding: 16px;
+    min-height: 0;
+  }
+  .section {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .section:last-child {
+    border-bottom: none;
+  }
+  .section h3 {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--text-3);
+    font-weight: 500;
+  }
+  details.advanced {
+    margin-top: 8px;
+  }
+  details.advanced summary {
+    cursor: pointer;
+    color: var(--text-2);
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  .snapshots-page {
+    flex-direction: column;
+  }
+  .table-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 14px 16px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+  th {
+    color: var(--text-3);
+    font-weight: 500;
+    font-size: 11px;
+  }
+  td .row-actions {
+    margin-top: 0;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    gap: 6px;
+  }
+  td .row-actions button {
+    padding: 4px 9px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .prefs {
+    border-top: 1px solid var(--line);
+    padding: 14px 16px;
+    background: var(--surface);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+  .prefs .field { margin: 0; }
+
+  .settings-wrap,
+  .about-wrap {
+    width: min(760px, 100%);
+    margin: 0;
+    padding: 0;
+  }
+  .settings-wrap > h2 {
+    margin: 0 0 6px;
+    font-size: 15px;
+  }
+  .settings-wrap > .sub {
+    color: var(--text-3);
+    font-size: 12px;
+    margin: 0 0 16px;
+  }
+  .settings-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-2);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .settings-card > h3 {
+    margin: 0;
+    padding: 12px 14px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-3);
+  }
+  .form-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+  }
+  .form-row > label {
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .form-row select,
+  .form-row input[type="text"] {
+    width: 100%;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 10px;
+    outline: none;
+  }
+  .form-row select:focus,
+  .form-row input[type="text"]:focus {
+    border-color: var(--accent-soft);
+  }
+  .form-row.stack {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .form-row .hint {
+    grid-column: 2;
+  }
+  .settings-card details.advanced {
+    margin: 0;
+  }
+  .settings-card details.advanced summary {
+    padding: 12px 14px;
+    border-top: 1px solid var(--line);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .settings-card details.advanced summary::-webkit-details-marker {
+    display: none;
+  }
+  .settings-card details.advanced summary::before {
+    content: "";
+    width: 0;
+    height: 0;
+    border-left: 5px solid var(--text-3);
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform 0.12s ease;
+  }
+  .settings-card details.advanced[open] summary::before {
+    transform: rotate(90deg);
+  }
+  .settings-card details.advanced[open] summary {
+    margin-bottom: 0;
+  }
+  .settings-card details.advanced .fields {
+    padding: 0 0 6px;
+  }
+  .settings-card .hint {
+    color: var(--text-3);
+    font-size: 11px;
+  }
+
+  .center-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-3);
+  }
+
+  .statusbar {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+  }
+  .status-text {
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .status-text.dirty {
+    color: var(--warn);
+  }
+  .status-text.ok {
+    color: var(--ok);
+  }
+  .status-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+
+  .modal-root {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 24px;
+  }
+  .modal-root.open { display: flex; }
+
+  .modal {
+    width: min(720px, 100%);
+    max-height: min(820px, 100%);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+  .modal.wide {
+    width: min(860px, 100%);
+  }
+  .modal-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .modal-head h2 {
+    margin: 0;
+    font-size: 14px;
+  }
+  .steps {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .step-chip {
+    font-size: 11px;
+    color: var(--text-3);
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+  }
+  .step-chip.active {
+    color: var(--text);
+    border-color: #4a6a94;
+    background: var(--accent-2);
+  }
+  .modal-body {
+    padding: 16px 18px;
+    overflow: auto;
+  }
+  .modal-foot {
+    padding: 12px 18px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .modal-foot .left {
+    margin-right: auto;
+    color: var(--text-3);
+    font-size: 11px;
+    align-self: center;
+  }
+
+  .impact-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .impact-item {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+  }
+  .impact-item h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+  }
+  .impact-item p {
+    margin: 0;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+
+  .risk-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: var(--surface-2);
+  }
+  .risk-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    border: 1px solid var(--line);
+  }
+  .risk-badge.safe {
+    background: var(--ok-bg);
+    color: var(--ok);
+    border-color: #2f5a40;
+  }
+  .risk-badge.warning {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-color: #6a5420;
+  }
+  .risk-badge.danger {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border-color: #6a3838;
+  }
+
+  .diff {
+    font-family: var(--mono);
+    font-size: 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-deep);
+    margin-top: 12px;
+  }
+  .diff-line {
+    display: grid;
+    grid-template-columns: 40px 40px 18px 1fr;
+    gap: 6px;
+    padding: 3px 8px;
+  }
+  .diff-line .ln {
+    color: var(--text-3);
+    text-align: right;
+  }
+  .diff-line.ctx { color: var(--diff-ctx); }
+  .diff-line.add {
+    background: var(--diff-add-bg);
+    color: var(--diff-add);
+  }
+  .diff-line.del {
+    background: var(--diff-del-bg);
+    color: var(--diff-del);
+  }
+  .diff-line.hunk {
+    color: var(--accent-soft);
+    background: var(--surface-2);
+    grid-template-columns: 1fr;
+  }
+
+  .check-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 12px 0;
+    color: var(--text-2);
+  }
+
+  .result-box {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px;
+    background: var(--surface-2);
+    text-align: center;
+  }
+  .result-box h3 {
+    margin: 0 0 8px;
+  }
+  .result-box p {
+    margin: 0;
+    color: var(--text-2);
+  }
+
+  .empty-state {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-3);
+  }
+
+  .note {
+    color: var(--text-3);
+    font-size: 11px;
+    margin-top: 8px;
+  }
+
+  @media (max-width: 980px) {
+    .app {
+      width: 100%;
+      max-width: none;
+      height: auto;
+      min-height: 100vh;
+      margin: 0;
+      border-radius: 0;
+    }
+    .app {
+      flex-direction: column;
+    }
+    .nav-rail {
+      width: 100%;
+      flex: none;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      gap: 8px;
+    }
+    .nav-rail.collapsed {
+      width: 100%;
+      flex-basis: auto;
+      padding: 10px 12px;
+    }
+    .nav {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .nav-bottom {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+    .nav-rail.collapsed .brand {
+      justify-content: flex-start;
+      padding: 4px 6px;
+    }
+    .nav-rail.collapsed .brand-text,
+    .nav-rail.collapsed .nav-label {
+      display: inline;
+    }
+    .nav-rail.collapsed .nav button {
+      width: auto;
+      justify-content: flex-start;
+      padding: 6px 12px;
+      border-radius: 8px;
+    }
+    .nav-edge-toggle {
+      top: 12px;
+      right: 12px;
+      box-shadow: none;
+    }
+    .nav button {
+      width: auto;
+      padding: 6px 12px;
+      border-left: none;
+      border-radius: 8px;
+    }
+    .nav button.active {
+      border-left: none;
+    }
+    .body { flex-direction: column; }
+    .sidebar,
+    .form-col,
+    .page-entries > .panel {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      flex: none;
+      border: none;
+      border-bottom: 1px solid var(--line);
+    }
+    .page-entries {
+      flex-direction: column;
+    }
+    .wide-page {
+      flex-direction: column;
+    }
+    .prefs { grid-template-columns: 1fr; }
+    .titlebar {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  }
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+
+<div class="app" id="app">
+  <header class="titlebar">
+    <div class="brand">
+      <img src="../assets/logo.svg" alt="Helmsman" width="22" height="22" />
+      <span class="brand-text">Helmsman</span>
+    </div>
+    <div class="window-controls">
+      <button type="button" class="win-btn" title="最小化" aria-label="最小化">
+        <svg width="10" height="2" viewBox="0 0 10 2"><rect width="10" height="2" fill="currentColor"/></svg>
+      </button>
+      <button type="button" class="win-btn" title="最大化" aria-label="最大化">
+        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor"/></svg>
+      </button>
+      <button type="button" class="win-btn close" title="关闭" aria-label="关闭">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="app-main">
+    <aside class="nav-rail" id="nav-rail">
+      <button type="button" id="btn-nav-toggle" class="nav-toggle nav-edge-toggle" title="收起菜单栏" aria-label="收起或展开菜单栏" aria-pressed="false">
+        <svg class="nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <nav class="nav" id="nav">
+        <button type="button" data-page="entries" class="active" title="启动项">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+          <span class="nav-label">启动项</span>
+        </button>
+        <button type="button" data-page="appearance" title="外观">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 0-5H13a2 2 0 0 1 0-4h4a4 4 0 0 0 4-4c0-2.8-4-5-9-5z"/><circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg>
+          <span class="nav-label">外观</span>
+        </button>
+        <button type="button" data-page="snapshots" title="快照">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>
+          <span class="nav-label">快照</span>
+        </button>
+      </nav>
+      <nav class="nav nav-bottom" id="nav-bottom">
+        <button type="button" data-page="settings" title="设置">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          <span class="nav-label">设置</span>
+        </button>
+        <button type="button" data-page="about" title="关于">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r="0.8" fill="currentColor" stroke="none"/></svg>
+          <span class="nav-label">关于</span>
+        </button>
+      </nav>
+    </aside>
+
+    <div class="content-col">
+
+  <div class="body">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-head">
+        <span class="side-head-title">引导菜单</span>
+        <div class="side-head-actions">
+          <button type="button" class="icon-btn" id="btn-move-up" title="上移条目" aria-label="上移条目">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="btn-move-down" title="下移条目" aria-label="下移条目">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          </button>
+          <button type="button" id="btn-add-custom" title="添加自定义引导项">+ 自定义</button>
+        </div>
+      </div>
+      <div class="entry-list" id="entry-list"></div>
+      <div class="side-foot">
+        <div class="side-foot-title">启动行为</div>
+        <label class="compact-field">
+          <span>倒计时</span>
+          <input id="timeout" type="number" min="0" max="60" step="1" />
+        </label>
+        <label class="compact-field">
+          <span>风格</span>
+          <select id="timeout-style">
+            <option value="menu">menu</option>
+            <option value="countdown">countdown</option>
+            <option value="hidden">hidden</option>
+          </select>
+        </label>
+        <div class="switch-row">
+          <span>saved 记住上次</span>
+          <div class="switch" id="sw-saved" role="switch" aria-checked="false"></div>
+        </div>
+        <div class="side-foot-title">菜单过滤</div>
+        <div class="switch-row">
+          <span>隐藏恢复模式</span>
+          <div class="switch" id="sw-recovery" role="switch" aria-checked="false"></div>
+        </div>
+        <div class="switch-row">
+          <span>拉平子菜单</span>
+          <div class="switch" id="sw-submenu" role="switch" aria-checked="false"></div>
+        </div>
+        <div class="switch-row">
+          <span>多系统探测</span>
+          <div class="switch on" id="sw-osprober" role="switch" aria-checked="true"></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="page page-entries active" id="page-entries">
+        <div class="panel" style="flex:1;min-width:0;">
+          <div class="page-header">
+            <div class="page-header-main">
+              <h2 id="entry-panel-title">启动项属性</h2>
+              <div class="sub">在左侧列表选择条目后在此编辑显示名、别名与默认项，全部修改暂存在草稿中</div>
+            </div>
+            <div class="page-header-actions">
+              <span class="badge-status">草稿编辑</span>
+            </div>
+          </div>
+          <div id="entry-form"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-appearance">
+        <div class="panel" style="flex:1;min-width:0;">
+          <div class="page-header">
+            <div class="page-header-main">
+              <h2>视觉外观</h2>
+              <div class="sub">配置 GRUB 引导界面的主题样式、背景壁纸与显示分辨率</div>
+            </div>
+            <div class="page-header-actions">
+              <button id="btn-zoom" class="secondary" style="display:inline-flex;align-items:center;gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+                预览开机效果
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-wrap" style="max-width:760px;">
+            <div class="settings-card">
+              <h3>主题管理</h3>
+              <div class="field" style="padding:12px 14px 0;">
+                <label>已安装主题</label>
+                <div class="theme-box">
+                  <div class="theme-list" id="theme-list"></div>
+                  <div class="row-actions">
+                    <button id="btn-theme-apply">设为当前主题</button>
+                    <button id="btn-theme-install">安装压缩包…</button>
+                    <button class="ghost" id="btn-theme-remove">删除主题</button>
+                    <button class="ghost" id="btn-theme-none">清除主题</button>
+                  </div>
+                  <div class="hint" style="margin-top:8px;">
+                    安装/删除经 PolicyKit 立即生效；「设为当前主题」只改草稿中的 GRUB_THEME。
+                  </div>
+                </div>
+              </div>
+              <div class="form-row" style="border-top:1px solid var(--line);margin-top:12px;">
+                <label for="theme-path">GRUB 主题路径</label>
+                <div>
+                  <input id="theme-path" type="text" placeholder="留空表示不使用主题" />
+                  <div class="hint" style="margin-top:4px;">通常指向主题目录下的 theme.txt，可手动输入修改。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>显示与壁纸</h3>
+              <div class="form-row">
+                <label for="bg-path">背景壁纸</label>
+                <input id="bg-path" type="text" placeholder="/usr/share/backgrounds/grub.jpg" />
+              </div>
+              <div class="form-row">
+                <label for="gfxmode">菜单分辨率</label>
+                <div>
+                  <div class="combo-row">
+                    <select id="gfxmode-preset" aria-label="分辨率预设">
+                      <option value="auto">auto</option>
+                      <option value="1024x768">1024x768</option>
+                      <option value="1280x800">1280x800</option>
+                      <option value="1366x768">1366x768</option>
+                      <option value="1600x900">1600x900</option>
+                      <option value="1920x1080">1920x1080</option>
+                      <option value="2560x1440">2560x1440</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                    <input id="gfxmode" type="text" list="gfxmode-list" value="auto" spellcheck="false" />
+                    <datalist id="gfxmode-list">
+                      <option value="auto"></option>
+                      <option value="1024x768"></option>
+                      <option value="1280x800"></option>
+                      <option value="1366x768"></option>
+                      <option value="1600x900"></option>
+                      <option value="1920x1080"></option>
+                      <option value="2560x1440"></option>
+                      <option value="1920x1080,1024x768,auto"></option>
+                    </datalist>
+                  </div>
+                  <div class="hint" style="margin-top:4px;">可选预设，也可直接输入；多档回退用逗号分隔，例如 1920x1080,1024x768,auto。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-snapshots">
+        <div class="panel" style="flex:1;min-width:0;">
+          <div class="page-header">
+            <div class="page-header-main">
+              <h2>灾难恢复快照</h2>
+              <div class="sub">系统在每次应用配置变更前自动捕获快照，回滚操作经 PolicyKit 独立鉴权执行</div>
+            </div>
+            <div class="page-header-actions">
+              <span class="badge-status">自动归档</span>
+            </div>
+          </div>
+          <div class="table-card" style="max-width:960px;">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:180px;">时间</th>
+                  <th>变更摘要</th>
+                  <th style="width:200px;">快照标识</th>
+                  <th style="width:210px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="snapshot-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <div class="panel" style="flex:1;min-width:0;">
+          <div class="page-header">
+            <div class="page-header-main">
+              <h2>应用偏好设置</h2>
+              <div class="sub">管理客户端界面外观偏好与高级内核引导参数（本地生效，不改写 GRUB 配置）</div>
+            </div>
+            <div class="page-header-actions">
+              <span class="badge-status">即时生效</span>
+            </div>
+          </div>
+
+          <div class="settings-wrap" style="max-width:760px;">
+            <div class="settings-card">
+              <h3>界面外观</h3>
+              <div class="form-row">
+                <label for="ui-theme">界面主题</label>
+                <select id="ui-theme">
+                  <option value="system">跟随系统</option>
+                  <option value="dark">深色</option>
+                  <option value="light" selected>浅色</option>
+                  <option value="hc">高对比度</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="font-scale">字体缩放</label>
+                <select id="font-scale">
+                  <option>小</option>
+                  <option selected>标准</option>
+                  <option>大</option>
+                  <option>特大</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="lang">界面语言</label>
+                <select id="lang">
+                  <option selected>简体中文</option>
+                  <option>English</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h3>高级引导参数</h3>
+              <details class="advanced">
+                <summary>内核引导参数（谨慎修改）</summary>
+                <div class="fields">
+                  <div class="form-row">
+                    <label for="cmdline">GRUB_CMDLINE_LINUX</label>
+                    <input id="cmdline" type="text" value="" placeholder="例如 rootflags=subvol=@" />
+                  </div>
+                  <div class="form-row">
+                    <label for="cmdline-default">GRUB_CMDLINE_LINUX_DEFAULT</label>
+                    <input id="cmdline-default" type="text" value="quiet splash" />
+                  </div>
+                  <div class="form-row stack">
+                    <div class="hint">调整后影响说明会解释 nomodeset / quiet / splash 的实际效果。错误参数可能导致无法进入系统。</div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-about">
+        <div class="panel" style="flex:1;min-width:0;">
+          <div class="page-header">
+            <div class="page-header-main">
+              <h2>关于 Helmsman</h2>
+              <div class="sub">基于纯 Rust 开发的高可靠现代化 Linux GRUB 引导管理器</div>
+            </div>
+            <div class="page-header-actions">
+              <span class="badge-status badge-accent">v0.1.0 原型</span>
+            </div>
+          </div>
+
+          <div class="about-wrap" style="max-width:760px;">
+            <div class="settings-card" style="padding:28px 20px;text-align:center;">
+              <img src="../assets/logo.svg" alt="Helmsman" width="60" height="60" style="display:block;margin:0 auto 12px;" />
+              <h3 style="margin:0 0 6px;font-size:17px;font-weight:700;color:var(--text);letter-spacing:-0.01em;">Helmsman</h3>
+              <p style="margin:0 0 12px;color:var(--text-2);font-size:13px;">基于纯 Rust 的 Linux GRUB 引导管理工具</p>
+              <div style="margin-bottom:14px;">
+                <img src="../assets/logo-badge.svg" alt="HELMSMAN" height="28" style="vertical-align:middle;" />
+              </div>
+              <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:12px;font-size:12px;color:var(--text-3);">
+                <span>版本 0.1.0（原型）</span>
+                <span>·</span>
+                <span>许可证 Apache-2.0</span>
+                <span>·</span>
+                <span>架构：非特权 UI + Polkit / D-Bus 特权守护进程</span>
+              </div>
+            </div>
+
+            <div class="settings-card" style="margin-top:14px;">
+              <h3>运行环境（只读诊断）</h3>
+              <div class="form-row">
+                <label>图形平台</label>
+                <span style="font-size:12px;color:var(--text);">Linux · Wayland / X11</span>
+              </div>
+              <div class="form-row">
+                <label>特权守护进程</label>
+                <span style="font-size:12px;color:var(--text);">helmsman-daemon（D-Bus 按需激活）</span>
+              </div>
+              <div class="form-row">
+                <label>发行版适配</label>
+                <span style="font-size:12px;color:var(--text);">自动探测（Distro Adapter）</span>
+              </div>
+              <div class="form-row stack" style="background:var(--surface);">
+                <div class="hint" style="color:var(--text-3);font-size:11px;">
+                  本页展示客户端版本、许可证与只读运行环境诊断信息，不提供引导配置写入。
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="statusbar">
+    <div class="status-text" id="status-text">配置无变化</div>
+    <div class="status-actions">
+      <button id="btn-discard" disabled>放弃修改</button>
+      <button class="primary" id="btn-apply" disabled>应用更改</button>
+    </div>
+  </footer>
+  </div>
+  </div>
+</div>
+
+<!-- 预览放大 -->
+<div class="modal-root" id="modal-preview">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h2>开机画面预览</h2>
+      <div class="steps">
+        <span class="step-chip active">模拟 1024×640</span>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="grub-canvas large" id="preview-modal"></div>
+      <div class="note">此处仅预览，不会改写 GRUB_DEFAULT。可使用上下键切换高亮。</div>
+    </div>
+    <div class="modal-foot">
+      <button class="ghost" id="btn-preview-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 应用三步向导 -->
+<div class="modal-root" id="modal-apply">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="wizard-title">应用配置变更</h2>
+      <div class="steps" id="wizard-steps">
+        <span class="step-chip active" data-step="1">1 影响</span>
+        <span class="step-chip" data-step="2">2 风险与 Diff</span>
+        <span class="step-chip" data-step="3">3 提交</span>
+      </div>
+    </div>
+    <div class="modal-body" id="wizard-body"></div>
+    <div class="modal-foot">
+      <div class="left" id="wizard-hint"></div>
+      <button class="ghost" id="btn-wizard-cancel">取消</button>
+      <button id="btn-wizard-back">上一步</button>
+      <button class="primary" id="btn-wizard-next">下一步</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const initial = {
+    entries: [
+      {
+        id: "gnulinux-6.8",
+        title: "Ubuntu, with Linux 6.8.0-45-generic",
+        display: "Ubuntu 6.8（默认）",
+        alias: "Ubuntu 6.8（默认）",
+        isDefault: true,
+        isRecovery: false,
+        isCustom: false,
+        kernel: "6.8.0"
+      },
+      {
+        id: "osprober-windows",
+        title: "Windows Boot Manager (on /dev/nvme0n1p1)",
+        display: "Windows Boot Manager",
+        alias: "",
+        isDefault: false,
+        isRecovery: false,
+        isCustom: false,
+        kernel: null
+      },
+      {
+        id: "gnulinux-6.8-recovery",
+        title: "Ubuntu, with Linux 6.8.0-45-generic (recovery mode)",
+        display: "Ubuntu 6.8（恢复模式）",
+        alias: "",
+        isDefault: false,
+        isRecovery: true,
+        isCustom: false,
+        kernel: "6.8.0"
+      },
+      {
+        id: "iso_fedora",
+        title: "Fedora Workstation Live",
+        display: "Fedora Workstation Live",
+        alias: "",
+        isDefault: false,
+        isRecovery: false,
+        isCustom: true,
+        kernel: null
+      }
+    ],
+    selectedId: "gnulinux-6.8",
+    hideRecovery: false,
+    flattenSubmenu: false,
+    osProber: true,
+    savedDefault: false,
+    timeout: 5,
+    timeoutStyle: "menu",
+    themePath: "/boot/grub/themes/helmsman/theme.txt",
+    themes: [
+      {
+        name: "helmsman",
+        path: "/boot/grub/themes/helmsman",
+        hasDescriptor: true
+      },
+      {
+        name: "starfield",
+        path: "/boot/grub/themes/starfield",
+        hasDescriptor: true
+      },
+      {
+        name: "draft-local",
+        path: "/boot/grub/themes/draft-local",
+        hasDescriptor: false
+      }
+    ],
+    themePick: "helmsman",
+    bgPath: "",
+    gfxmode: "auto",
+    cmdline: "",
+    cmdlineDefault: "quiet splash",
+    dirty: false,
+    page: "entries",
+    previewSelectedIndex: 0,
+    countdown: null
+  };
+
+  const baseline = JSON.parse(JSON.stringify(initial));
+  let state = JSON.parse(JSON.stringify(initial));
+
+  const $ = (id) => document.getElementById(id);
+
+  // 界面主题：本机偏好，可选跟随系统 / 深色 / 浅色 / 高对比度
+  const THEME_KEY = "helmsman.ui-theme";
+  const themeSelect = $("ui-theme");
+
+  function resolveTheme(mode) {
+    if (mode === "system") {
+      return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    }
+    return mode;
+  }
+
+  function applyTheme(mode) {
+    document.documentElement.setAttribute("data-theme", resolveTheme(mode));
+  }
+
+  function initUiTheme() {
+    let mode = "light";
+    try {
+      mode = localStorage.getItem(THEME_KEY) || "light";
+    } catch (_) {
+      mode = "light";
+    }
+    if (!["system", "dark", "light", "hc"].includes(mode)) {
+      mode = "light";
+    }
+    themeSelect.value = mode;
+    applyTheme(mode);
+    themeSelect.addEventListener("change", () => {
+      const next = themeSelect.value;
+      applyTheme(next);
+      try {
+        localStorage.setItem(THEME_KEY, next);
+      } catch (_) {
+        // 隐私模式等场景下忽略持久化失败
+      }
+    });
+    window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+      if (themeSelect.value === "system") {
+        applyTheme("system");
+      }
+    });
+  }
+
+  function markDirty() {
+    state.dirty = true;
+    renderStatus();
+  }
+
+  function visibleEntries() {
+    return state.entries.filter((e) => !(state.hideRecovery && e.isRecovery));
+  }
+
+  function renderEntries() {
+    const list = $("entry-list");
+    list.innerHTML = "";
+    const items = visibleEntries();
+    if (!items.length) {
+      list.innerHTML = '<div class="empty-state">当前过滤下没有引导项</div>';
+      const upBtn = $("btn-move-up");
+      const downBtn = $("btn-move-down");
+      if (upBtn) upBtn.disabled = true;
+      if (downBtn) downBtn.disabled = true;
+      return;
+    }
+    items.forEach((e, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "entry" + (e.id === state.selectedId ? " selected" : "");
+      btn.type = "button";
+      btn.innerHTML =
+        '<span class="title"></span>' + (e.isDefault ? '<span class="badge-default">默认</span>' : '');
+      btn.querySelector(".title").textContent = e.display;
+      btn.addEventListener("click", () => {
+        state.selectedId = e.id;
+        state.previewSelectedIndex = idx;
+        renderAll();
+      });
+      list.appendChild(btn);
+    });
+
+    const curIdx = state.entries.findIndex((x) => x.id === state.selectedId);
+    const upBtn = $("btn-move-up");
+    const downBtn = $("btn-move-down");
+    if (upBtn) upBtn.disabled = curIdx <= 0;
+    if (downBtn) downBtn.disabled = curIdx < 0 || curIdx >= state.entries.length - 1;
+  }
+
+  function badge(text, cls) {
+    const s = document.createElement("span");
+    s.className = "badge " + cls;
+    s.textContent = text;
+    return s;
+  }
+
+  function selectedEntry() {
+    return state.entries.find((e) => e.id === state.selectedId) || null;
+  }
+
+  function renderEntryForm() {
+    const root = $("entry-form");
+    const e = selectedEntry();
+    if (!e) {
+      root.innerHTML = '<div class="empty-state">请选择左侧启动项</div>';
+      return;
+    }
+    $("entry-panel-title").textContent = e.display;
+
+    root.innerHTML = `
+      <div class="settings-wrap" style="max-width:680px;margin:0;">
+        <div class="settings-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:12px;font-weight:600;color:var(--text-2);">引导角色</span>
+              ${e.isDefault ? '<span class="badge-status badge-accent">默认启动项</span>' : '<span class="badge-status">普通引导项</span>'}
+            </div>
+            <div>
+              <button id="btn-set-default" class="${e.isDefault ? "" : "primary"}" ${e.isDefault ? "disabled" : ""} style="padding:4px 12px;font-size:12px;">
+                ${e.isDefault ? "已是默认启动项" : "设为默认启动项"}
+              </button>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="alias-input">显示别名</label>
+            <div>
+              <input id="alias-input" type="text" placeholder="留空则显示原始标题" />
+              <div class="hint" style="margin-top:4px;">仅用于引导菜单展示，不改写底层系统配置。</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>条目标识</label>
+            <code id="kv-id" style="font-family:var(--mono);font-size:11px;color:var(--text-2);"></code>
+          </div>
+          <div class="form-row">
+            <label>引导内核</label>
+            <span id="kv-kernel" style="font-size:12px;color:var(--text);"></span>
+          </div>
+          <div class="form-row">
+            <label>条目类型</label>
+            <span id="kv-kind" style="font-size:12px;color:var(--text);"></span>
+          </div>
+        </div>
+
+        ${
+          e.isCustom
+            ? `<div class="settings-card">
+                <h3>自定义引导配置</h3>
+                <div class="form-row">
+                  <label for="custom-path">镜像 / 内核路径</label>
+                  <input id="custom-path" type="text" value="/boot/iso/fedora.iso" />
+                </div>
+                <div class="form-row stack" style="background:var(--surface);">
+                  <div class="row-actions" style="margin:0;">
+                    <button class="danger" id="btn-del-custom" style="padding:5px 12px;font-size:12px;">移除此自定义项</button>
+                  </div>
+                </div>
+              </div>`
+            : ""
+        }
+      </div>
+    `;
+    $("kv-id").textContent = e.id;
+    $("kv-kernel").textContent = e.kernel || "—";
+    $("kv-kind").textContent = e.isCustom ? "受管自定义项" : e.isRecovery ? "恢复/急救" : "系统探测项";
+    const alias = $("alias-input");
+    alias.value = e.alias || "";
+    alias.addEventListener("input", () => {
+      e.alias = alias.value;
+      e.display = alias.value.trim() || e.title;
+      markDirty();
+      renderEntries();
+      renderPreviews();
+    });
+    const setDefBtn = $("btn-set-default");
+    if (setDefBtn) {
+      setDefBtn.addEventListener("click", () => {
+        if (e.isDefault) return;
+        state.entries.forEach((x) => (x.isDefault = false));
+        e.isDefault = true;
+        markDirty();
+        renderAll();
+      });
+    }
+    const del = $("btn-del-custom");
+    if (del) {
+      del.addEventListener("click", () => {
+        state.entries = state.entries.filter((x) => x.id !== e.id);
+        state.selectedId = state.entries[0] ? state.entries[0].id : null;
+        markDirty();
+        renderAll();
+      });
+    }
+  }
+
+  function moveEntry(id, delta) {
+    const list = state.entries;
+    const i = list.findIndex((x) => x.id === id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const t = list[i];
+    list[i] = list[j];
+    list[j] = t;
+    markDirty();
+    renderAll();
+  }
+
+  function grubMarkup(large) {
+    const items = visibleEntries();
+    const silent = state.timeoutStyle === "hidden" && state.timeout > 0;
+    const showProgress = state.timeoutStyle !== "menu" && state.timeout > 0;
+    const ratio = state.countdown === null
+      ? 0.6
+      : state.timeout > 0
+        ? Math.max(0, state.countdown / state.timeout)
+        : 0;
+    const selected = Math.min(state.previewSelectedIndex, Math.max(items.length - 1, 0));
+
+    const listHtml = items
+      .map((e, i) => {
+        const cls = i === selected ? "grub-item selected" : "grub-item";
+        return `<div class="${cls}">${escapeHtml(e.display)}</div>`;
+      })
+      .join("");
+
+    return `
+      <div class="grub-screen ${state.bgPath ? "has-bg" : ""}">
+        <div class="grub-title">${escapeHtml(state.themePath ? "Helmsman Theme" : "GNU GRUB")}</div>
+        ${listHtml}
+      </div>
+      ${showProgress ? `<div class="grub-progress"><i style="width:${Math.round(ratio * 100)}%"></i></div>` : ""}
+      <div class="grub-hidden">静默模式：超时后直接进入默认项</div>
+    `;
+  }
+
+  function renderPreviews() {
+    const el = $("preview-modal");
+    if (!el) return;
+    const silent = state.timeoutStyle === "hidden" && state.timeout > 0;
+    el.classList.toggle("silent", silent);
+    el.innerHTML = grubMarkup();
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+
+  function bindSwitch(id, key, after) {
+    const el = $(id);
+    el.classList.toggle("on", !!state[key]);
+    el.setAttribute("aria-checked", state[key] ? "true" : "false");
+    el.onclick = () => {
+      state[key] = !state[key];
+      el.classList.toggle("on", !!state[key]);
+      el.setAttribute("aria-checked", state[key] ? "true" : "false");
+      markDirty();
+      if (after) after();
+    };
+  }
+
+  function renderSwitches() {
+    bindSwitch("sw-recovery", "hideRecovery", () => {
+      const items = visibleEntries();
+      if (!items.some((x) => x.id === state.selectedId)) {
+        state.selectedId = items[0] ? items[0].id : null;
+      }
+      renderAll();
+    });
+    bindSwitch("sw-submenu", "flattenSubmenu", renderAll);
+    bindSwitch("sw-osprober", "osProber", renderPreviews);
+    bindSwitch("sw-saved", "savedDefault", () => {});
+  }
+
+  const GFX_PRESETS = [
+    "auto",
+    "1024x768",
+    "1280x800",
+    "1366x768",
+    "1600x900",
+    "1920x1080",
+    "2560x1440"
+  ];
+
+  function gfxPresetOf(value) {
+    return GFX_PRESETS.includes(value) ? value : "custom";
+  }
+
+  function renderThemeList() {
+    const root = $("theme-list");
+    if (!root) return;
+    if (!state.themes.length) {
+      root.innerHTML = '<div class="empty-state" style="padding:8px;">尚未安装主题</div>';
+    } else {
+      root.innerHTML = "";
+      state.themes.forEach((t) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "theme-item" + (state.themePick === t.name ? " selected" : "");
+        btn.innerHTML = '<span class="name"></span><span class="path"></span>';
+        btn.querySelector(".name").textContent = t.name + (t.hasDescriptor ? "" : "（缺 theme.txt）");
+        btn.querySelector(".path").textContent = t.path;
+        btn.addEventListener("click", () => {
+          state.themePick = t.name;
+          renderThemeList();
+        });
+        root.appendChild(btn);
+      });
+    }
+    const applyBtn = $("btn-theme-apply");
+    const removeBtn = $("btn-theme-remove");
+    const hasPick = state.themes.some((t) => t.name === state.themePick);
+    if (applyBtn) applyBtn.disabled = !hasPick;
+    if (removeBtn) removeBtn.disabled = !hasPick;
+  }
+
+  function bindThemeActions() {
+    $("btn-theme-apply").onclick = () => {
+      const t = state.themes.find((x) => x.name === state.themePick);
+      if (!t) return;
+      state.themePath = t.hasDescriptor ? t.path + "/theme.txt" : t.path;
+      markDirty();
+      bindForm();
+      renderPreviews();
+    };
+    $("btn-theme-none").onclick = () => {
+      state.themePath = "";
+      markDirty();
+      bindForm();
+      renderPreviews();
+    };
+    $("btn-theme-install").onclick = () => {
+      alert("原型提示：选择 zip/tar.gz 主题包 → PolicyKit（install-theme）→ 守护进程安全解压安装。");
+      const name = "theme-" + (state.themes.length + 1);
+      state.themes.push({
+        name,
+        path: "/boot/grub/themes/" + name,
+        hasDescriptor: true
+      });
+      state.themePick = name;
+      renderThemeList();
+    };
+    $("btn-theme-remove").onclick = () => {
+      const t = state.themes.find((x) => x.name === state.themePick);
+      if (!t) return;
+      if (!confirm("确认删除主题「" + t.name + "」？将触发管理员授权。")) return;
+      state.themes = state.themes.filter((x) => x.name !== t.name);
+      if (state.themePath.startsWith(t.path)) {
+        state.themePath = "";
+        markDirty();
+      }
+      state.themePick = state.themes[0] ? state.themes[0].name : null;
+      renderThemeList();
+      bindForm();
+      renderPreviews();
+    };
+  }
+
+  function bindForm() {
+    $("timeout").value = state.timeout;
+    $("timeout-style").value = state.timeoutStyle;
+    $("theme-path").value = state.themePath;
+    $("bg-path").value = state.bgPath;
+    $("gfxmode").value = state.gfxmode;
+    $("gfxmode-preset").value = gfxPresetOf(state.gfxmode);
+    $("cmdline").value = state.cmdline;
+    $("cmdline-default").value = state.cmdlineDefault;
+    renderThemeList();
+    bindThemeActions();
+
+    $("timeout").oninput = (ev) => {
+      state.timeout = clampInt(ev.target.value, 0, 60);
+      markDirty();
+      renderPreviews();
+    };
+    $("timeout-style").onchange = (ev) => {
+      state.timeoutStyle = ev.target.value;
+      markDirty();
+      renderPreviews();
+    };
+    $("theme-path").oninput = (ev) => {
+      state.themePath = ev.target.value;
+      markDirty();
+      renderPreviews();
+    };
+    $("bg-path").oninput = (ev) => {
+      state.bgPath = ev.target.value;
+      markDirty();
+      renderPreviews();
+    };
+    $("gfxmode").oninput = (ev) => {
+      state.gfxmode = ev.target.value.trim();
+      $("gfxmode-preset").value = gfxPresetOf(state.gfxmode);
+      markDirty();
+    };
+    $("gfxmode-preset").onchange = (ev) => {
+      if (ev.target.value === "custom") {
+        $("gfxmode").focus();
+        $("gfxmode").select();
+        return;
+      }
+      state.gfxmode = ev.target.value;
+      $("gfxmode").value = state.gfxmode;
+      markDirty();
+    };
+    $("cmdline").oninput = (ev) => {
+      state.cmdline = ev.target.value;
+      markDirty();
+    };
+    $("cmdline-default").oninput = (ev) => {
+      state.cmdlineDefault = ev.target.value;
+      markDirty();
+    };
+  }
+
+  function clampInt(v, min, max) {
+    const n = parseInt(v, 10);
+    if (Number.isNaN(n)) return min;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function renderStatus() {
+    const el = $("status-text");
+    el.classList.remove("dirty", "ok");
+    if (state.dirty) {
+      el.textContent = "有未保存修改";
+      el.classList.add("dirty");
+    } else {
+      el.textContent = "配置无变化";
+    }
+    $("btn-discard").disabled = !state.dirty;
+    $("btn-apply").disabled = !state.dirty;
+  }
+
+  function renderSnapshots() {
+    const body = $("snapshot-body");
+    const rows = [
+      ["2026-03-02 14:20:11", "应用默认项与倒计时调整", "snap-20260302-142011"],
+      ["2026-02-18 09:03:44", "安装主题 helmsman-dark", "snap-20260218-090344"],
+      ["2026-01-30 21:41:02", "禁用 os-prober", "snap-20260130-214102"]
+    ];
+    body.innerHTML = rows
+      .map(
+        (r) => `<tr>
+        <td>${r[0]}</td>
+        <td>${r[1]}</td>
+        <td><code style="font-family:var(--mono);font-size:11px;color:var(--text-3)">${r[2]}</code></td>
+        <td>
+          <div class="row-actions">
+            <button data-act="rollback" data-id="${r[2]}">回滚</button>
+            <button class="ghost" data-act="export">导出</button>
+            <button class="ghost" data-act="delete">删除</button>
+          </div>
+        </td>
+      </tr>`
+      )
+      .join("");
+    body.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const act = btn.getAttribute("data-act");
+        if (act === "rollback") {
+          alert("原型提示：将弹出 PolicyKit 管理员鉴权，然后由守护进程回滚。\n目标：" + btn.getAttribute("data-id"));
+        } else if (act === "export") {
+          alert("原型提示：将调用守护进程导出快照归档。");
+        } else {
+          alert("原型提示：删除快照需二次确认，并可能触发 polkit。");
+        }
+      });
+    });
+  }
+
+  function switchPage(page) {
+    state.page = page;
+    document.querySelectorAll(".nav button[data-page]").forEach((b) => {
+      b.classList.toggle("active", b.getAttribute("data-page") === page);
+    });
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+    $("page-" + page).classList.add("active");
+    $("sidebar").classList.toggle("hidden", page !== "entries");
+  }
+
+  function renderAll() {
+    renderEntries();
+    renderEntryForm();
+    renderSwitches();
+    bindForm();
+    renderPreviews();
+    renderStatus();
+    renderSnapshots();
+  }
+
+  $("btn-zoom").onclick = () => {
+    $("modal-preview").classList.add("open");
+    renderPreviews();
+  };
+  $("btn-preview-close").onclick = () => $("modal-preview").classList.remove("open");
+
+  // 引导项上下移动
+  $("btn-move-up").onclick = () => {
+    if (state.selectedId) moveEntry(state.selectedId, -1);
+  };
+  $("btn-move-down").onclick = () => {
+    if (state.selectedId) moveEntry(state.selectedId, 1);
+  };
+
+  // 自定义项
+  $("btn-add-custom").onclick = () => {
+    const id = "custom_" + Date.now();
+    state.entries.push({
+      id,
+      title: "新的自定义引导项",
+      display: "新的自定义引导项",
+      alias: "",
+      isDefault: false,
+      isRecovery: false,
+      isCustom: true,
+      kernel: null
+    });
+    state.selectedId = id;
+    markDirty();
+    renderAll();
+  };
+
+  // 放弃
+  $("btn-discard").onclick = () => {
+    const keepPage = state.page;
+    state = JSON.parse(JSON.stringify(baseline));
+    state.page = keepPage;
+    bindForm();
+    renderAll();
+    switchPage(keepPage);
+  };
+
+  // 向导
+  let wizardStep = 1;
+  let riskAck = false;
+
+  function impacts() {
+    const items = [];
+    if (state.timeout !== baseline.timeout) {
+      items.push({
+        title: "开机倒计时调整",
+        explanation:
+          state.timeout === 0
+            ? `等待时间从 ${baseline.timeout} 秒改为 0，开机将不再停留菜单。`
+            : `等待时间从 ${baseline.timeout} 秒调整为 ${state.timeout} 秒。`
+      });
+    }
+    const nowDefault = state.entries.find((e) => e.isDefault);
+    const oldDefault = baseline.entries.find((e) => e.isDefault);
+    if (nowDefault && oldDefault && nowDefault.id !== oldDefault.id) {
+      items.push({
+        title: "默认启动项切换",
+        explanation: `默认项由「${oldDefault.display}」切换为「${nowDefault.display}」。`
+      });
+    }
+    if (state.osProber !== baseline.osProber) {
+      items.push({
+        title: state.osProber ? "启用多系统探测 (os-prober)" : "禁用多系统探测 (os-prober)",
+        explanation: state.osProber
+          ? "将在生成引导菜单时探测其他操作系统，并可能出现 Windows 等条目。"
+          : "将不再自动探测其他操作系统，Windows 等条目可能从菜单中消失。"
+      });
+    }
+    if (state.themePath !== baseline.themePath) {
+      items.push({
+        title: "切换开机视觉主题",
+        explanation: `开机主题由「${baseline.themePath || "无"}」切换为「${state.themePath || "无"}」。`
+      });
+    }
+    if (state.gfxmode !== baseline.gfxmode) {
+      items.push({
+        title: "调整菜单分辨率",
+        explanation: `GRUB_GFXMODE 由「${baseline.gfxmode}」调整为「${state.gfxmode}」，影响开机菜单渲染分辨率。`
+      });
+    }
+    if (state.bgPath !== baseline.bgPath) {
+      items.push({
+        title: "更换自定义开机壁纸",
+        explanation: state.bgPath
+          ? `开机引导背景将显示图片「${state.bgPath}」。`
+          : "已清除自定义壁纸，开机将使用默认背景。"
+      });
+    }
+    if (state.cmdlineDefault !== baseline.cmdlineDefault) {
+      const hasQuiet = !/\bquiet\b/.test(state.cmdlineDefault) && /\bquiet\b/.test(baseline.cmdlineDefault);
+      const hasNomodeset = /\bnomodeset\b/.test(state.cmdlineDefault) && !/\bnomodeset\b/.test(baseline.cmdlineDefault);
+      if (hasNomodeset) {
+        items.push({
+          title: "添加通用显示驱动模式 (nomodeset)",
+          explanation: "将使用基础显示驱动，可能降低分辨率，但有助于排查显卡导致的无法启动。"
+        });
+      }
+      if (hasQuiet) {
+        items.push({
+          title: "关闭静默启动 (移除 quiet)",
+          explanation: "开机将打印内核日志，便于排障，画面会更「吵」。"
+        });
+      }
+    }
+    if (state.entries.some((e) => e.isCustom) && state.entries.filter((e) => e.isCustom).length !== baseline.entries.filter((e) => e.isCustom).length) {
+      items.push({
+        title: "自定义引导项变更",
+        explanation: "自定义条目草稿有增删，将写入受管自定义段，不劫持发行版脚本。"
+      });
+    }
+    if (!items.length) {
+      items.push({
+        title: "无语义影响项",
+        explanation: "当前草稿与已应用配置一致，或变更过于局部，未生成影响说明。"
+      });
+    }
+    return items;
+  }
+
+  function risks() {
+    const list = [];
+    if (state.timeout === 0 && (state.timeoutStyle === "hidden" || !state.timeoutStyle)) {
+      list.push({
+        level: "danger",
+        label: "致命危险",
+        title: "倒计时为 0 且处于静默模式",
+        message: "开机将没有任何按键补救窗口，一旦默认项异常将难以进入其他系统。已阻断提交。",
+        canProceed: false
+      });
+    }
+    const def = state.entries.find((e) => e.isDefault);
+    if (!def) {
+      list.push({
+        level: "warning",
+        label: "警告",
+        title: "默认启动项为空",
+        message: "将依赖 GRUB 兜底行为，结果可能不符合预期。",
+        canProceed: true
+      });
+    }
+    if (!state.cmdline && !state.cmdlineDefault) {
+      list.push({
+        level: "warning",
+        label: "警告",
+        title: "内核引导参数为空",
+        message: "多数发行版仍可启动，但部分硬件需要 rootflags 等参数。",
+        canProceed: true
+      });
+    }
+    if (state.themePath && !state.themePath.endsWith("theme.txt") && state.themePath.trim() !== "") {
+      list.push({
+        level: "warning",
+        label: "警告",
+        title: "主题路径格式异常",
+        message: "通常应指向 theme.txt。路径错误会导致开机退回默认主题。",
+        canProceed: true
+      });
+    }
+    if (!list.length) {
+      list.push({
+        level: "safe",
+        label: "安全",
+        title: "未发现阻断项",
+        message: "校验通过，可以进入 Diff 确认。",
+        canProceed: true
+      });
+    }
+    return list;
+  }
+
+  function diffLines() {
+    const rows = [];
+    rows.push({ t: "hunk", content: "@@ /etc/default/grub @@" });
+    if (state.timeout !== baseline.timeout) {
+      rows.push({ t: "del", old: "3", neu: null, sign: "-", content: `GRUB_TIMEOUT=${baseline.timeout}` });
+      rows.push({ t: "add", old: null, neu: "3", sign: "+", content: `GRUB_TIMEOUT=${state.timeout}` });
+    }
+    const nowDefault = state.entries.find((e) => e.isDefault);
+    const oldDefault = baseline.entries.find((e) => e.isDefault);
+    if (nowDefault && oldDefault && nowDefault.id !== oldDefault.id) {
+      rows.push({ t: "del", old: "4", neu: null, sign: "-", content: `GRUB_DEFAULT=${oldDefault.id}` });
+      rows.push({ t: "add", old: null, neu: "4", sign: "+", content: `GRUB_DEFAULT=${nowDefault.id}` });
+    }
+    if (state.timeoutStyle !== baseline.timeoutStyle) {
+      rows.push({ t: "del", old: "5", neu: null, sign: "-", content: `GRUB_TIMEOUT_STYLE=${baseline.timeoutStyle}` });
+      rows.push({ t: "add", old: null, neu: "5", sign: "+", content: `GRUB_TIMEOUT_STYLE=${state.timeoutStyle}` });
+    }
+    if (state.osProber !== baseline.osProber) {
+      rows.push({ t: "ctx", old: "6", neu: "6", sign: " ", content: "# os-prober" });
+      rows.push({ t: "add", old: null, neu: "7", sign: "+", content: state.osProber ? "GRUB_DISABLE_OS_PROBER  # removed" : "GRUB_DISABLE_OS_PROBER=true" });
+    }
+    if (state.cmdlineDefault !== baseline.cmdlineDefault) {
+      rows.push({ t: "del", old: "8", neu: null, sign: "-", content: `GRUB_CMDLINE_LINUX_DEFAULT="${baseline.cmdlineDefault}"` });
+      rows.push({ t: "add", old: null, neu: "8", sign: "+", content: `GRUB_CMDLINE_LINUX_DEFAULT="${state.cmdlineDefault}"` });
+    }
+    if (rows.length === 1) {
+      rows.push({ t: "ctx", old: "1", neu: "1", sign: " ", content: "# 仅展示示例差异结构" });
+    }
+    return rows;
+  }
+
+  function renderWizard() {
+    document.querySelectorAll("#wizard-steps .step-chip").forEach((el) => {
+      el.classList.toggle("active", Number(el.getAttribute("data-step")) === wizardStep);
+    });
+    const body = $("wizard-body");
+    const hint = $("wizard-hint");
+    const next = $("btn-wizard-next");
+    const back = $("btn-wizard-back");
+    back.style.display = wizardStep === 1 || wizardStep === 3 ? "none" : "";
+
+    if (wizardStep === 1) {
+      $("wizard-title").textContent = "步骤 1 · 影响说明";
+      hint.textContent = "下列说明帮助理解提交后的实际开机行为";
+      next.textContent = "下一步";
+      next.disabled = false;
+      body.innerHTML =
+        '<div class="impact-list">' +
+        impacts()
+          .map(
+            (i) =>
+              `<div class="impact-item"><h4>${escapeHtml(i.title)}</h4><p>${escapeHtml(i.explanation)}</p></div>`
+          )
+          .join("") +
+        "</div>";
+    } else if (wizardStep === 2) {
+      $("wizard-title").textContent = "步骤 2 · 风险与 Diff";
+      const rs = risks();
+      const blocked = rs.some((r) => r.level === "danger");
+      hint.textContent = blocked
+        ? "存在致命风险，必须返回修改"
+        : "请阅读差异后再确认提交";
+      next.textContent = "确认提交";
+      next.disabled = blocked || (rs.some((r) => r.level === "warning") && !riskAck);
+
+      body.innerHTML =
+        rs
+          .map(
+            (r) => `<div class="risk-row">
+            <span class="risk-badge ${r.level}">${r.label}</span>
+            <div>
+              <div style="font-weight:600;margin-bottom:4px;">${escapeHtml(r.title)}</div>
+              <div style="color:var(--text-2);font-size:12px;">${escapeHtml(r.message)}</div>
+            </div>
+          </div>`
+          )
+          .join("") +
+        (rs.some((r) => r.level === "warning")
+          ? `<label class="check-row"><input type="checkbox" id="risk-ack" ${riskAck ? "checked" : ""}/> 我已了解上述警告，仍要继续</label>`
+          : "") +
+        `<div class="diff">` +
+        diffLines()
+          .map((d) => {
+            if (d.t === "hunk") return `<div class="diff-line hunk">${escapeHtml(d.content)}</div>`;
+            return `<div class="diff-line ${d.t}">
+              <span class="ln">${d.old ?? ""}</span>
+              <span class="ln">${d.neu ?? ""}</span>
+              <span>${d.sign}</span>
+              <span>${escapeHtml(d.content)}</span>
+            </div>`;
+          })
+          .join("") +
+        `</div>`;
+
+      const ack = $("risk-ack");
+      if (ack) {
+        ack.onchange = () => {
+          riskAck = ack.checked;
+          renderWizard();
+        };
+      }
+    } else if (wizardStep === 3) {
+      $("wizard-title").textContent = "步骤 3 · 提交结果";
+      hint.textContent = "此步骤将触发 PolicyKit 管理员鉴权";
+      back.style.display = "none";
+      next.textContent = "完成";
+      next.disabled = false;
+      body.innerHTML = `
+        <div class="result-box">
+          <h3 style="color:var(--ok)">提交成功（原型模拟）</h3>
+          <p>新配置已原子写入，并生成恢复快照。</p>
+          <p class="note">snap-20260315-183000 · 守护进程更新引导脚本完成</p>
+        </div>
+        <div class="note">真实应用中：此处等待 polkit 对话框与 D-Bus 应答；失败时展示错误并建议回滚。</div>
+      `;
+    }
+
+    $("btn-wizard-cancel").style.display = wizardStep === 3 ? "none" : "";
+  }
+
+  function openWizard() {
+    wizardStep = 1;
+    riskAck = false;
+    $("modal-apply").classList.add("open");
+    renderWizard();
+  }
+
+  $("btn-apply").onclick = openWizard;
+  $("btn-wizard-cancel").onclick = () => $("modal-apply").classList.remove("open");
+  $("btn-wizard-back").onclick = () => {
+    if (wizardStep > 1) {
+      wizardStep -= 1;
+      renderWizard();
+    }
+  };
+  $("btn-wizard-next").onclick = () => {
+    if (wizardStep === 1) {
+      wizardStep = 2;
+      renderWizard();
+      return;
+    }
+    if (wizardStep === 2) {
+      wizardStep = 3;
+      renderWizard();
+      return;
+    }
+    // 完成：对齐基准
+    baseline.entries = JSON.parse(JSON.stringify(state.entries));
+    baseline.timeout = state.timeout;
+    baseline.timeoutStyle = state.timeoutStyle;
+    baseline.themePath = state.themePath;
+    baseline.bgPath = state.bgPath;
+    baseline.gfxmode = state.gfxmode;
+    baseline.themes = JSON.parse(JSON.stringify(state.themes));
+    baseline.themePick = state.themePick;
+    baseline.cmdline = state.cmdline;
+    baseline.cmdlineDefault = state.cmdlineDefault;
+    baseline.osProber = state.osProber;
+    baseline.hideRecovery = state.hideRecovery;
+    baseline.flattenSubmenu = state.flattenSubmenu;
+    baseline.savedDefault = state.savedDefault;
+    state.dirty = false;
+    $("modal-apply").classList.remove("open");
+    renderAll();
+  };
+
+  document.querySelectorAll("#nav button[data-page], #nav-bottom button[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => switchPage(btn.getAttribute("data-page")));
+  });
+
+  // 菜单栏收起 / 展开：收起后仅保留图标
+  $("btn-nav-toggle").addEventListener("click", () => {
+    const rail = $("nav-rail");
+    const collapsed = rail.classList.toggle("collapsed");
+    const toggle = $("btn-nav-toggle");
+    toggle.setAttribute("aria-pressed", collapsed ? "true" : "false");
+    toggle.setAttribute("title", collapsed ? "展开菜单栏" : "收起菜单栏");
+  });
+
+  // 键盘：预览高亮
+  document.addEventListener("keydown", (ev) => {
+    if (!$("modal-preview").classList.contains("open")) return;
+    const items = visibleEntries();
+    if (ev.key === "ArrowDown") {
+      state.previewSelectedIndex = Math.min(state.previewSelectedIndex + 1, items.length - 1);
+      renderPreviews();
+    } else if (ev.key === "ArrowUp") {
+      state.previewSelectedIndex = Math.max(state.previewSelectedIndex - 1, 0);
+      renderPreviews();
+    } else if (ev.key === "Escape") {
+      $("modal-preview").classList.remove("open");
+    }
+  });
+
+  initUiTheme();
+  renderAll();
+  switchPage("entries");
+})();
+</script>
+</body>
+</html>
