@@ -16,7 +16,7 @@
 
 </div>
 
-Helmsman 是一个基于 Rust 语言构建的现代化、内存安全且可靠的 Linux GRUB 引导配置工具。作为经典工具 Grub Customizer 的强健继任者，Helmsman 在提供直观操作体验的同时，彻底解决了老旧工具破坏系统稳定性、破坏系统升级以及存在提权安全隐患等痛点。
+Helmsman 是一个基于 Rust 语言构建的现代化、内存安全且可靠的 Linux GRUB 引导配置工具。作为经典工具 Grub Customizer 的强健继任者，Helmsman 提供无头 UI 状态机与特权分离守护进程基础能力；桌面 GUI 前端仍在规划中，当前仓库尚未包含可启动的图形程序。
 
 ---
 
@@ -52,6 +52,7 @@ Helmsman 是一个基于 Rust 语言构建的现代化、内存安全且可靠�
 - **`crates/grub-boot-reader`**：负责解析 `/boot/grub/grub.cfg` 树形结构，反解析提取内核镜像路径、initrd、根分区 UUID、启动参数及链式加载器。
 - **`crates/grub-distro-adapter`**：跨发行版环境适配器，负责探测并抽象不同 Linux 发行版的引导配置文件路径与生成命令。
 - **`crates/grub-transaction-engine`**：事务执行引擎，负责 Unified Diff 差异计算、临时文件原子安全替换 (`atomic_write`) 与快照管理。
+- **`crates/helmsman-client`**：非特权 D-Bus 契约层，提供 DTO、Polkit 动作常量与系统总线类型安全代理，供 UI 与第三方工具消费。
 - **`crates/helmsman-daemon`**：特权守护进程，提供配置更新的事务执行、环境校验及 D-Bus 系统总线接口。
 - **`crates/helmsman-ui`**：Headless UI 状态机与草稿数据模型，将业务交互逻辑与界面渲染层解耦。
 
@@ -93,7 +94,7 @@ cargo build --release
 所有模块均包含完整的单元测试与集成测试套件：
 
 ```bash
-cargo test --workspace --features helmsman-daemon/test-support
+cargo test --workspace --features helmsman-daemon/test-support  # 需在启用 test-support 的 crate 上执行，或分别指定 -p
 ```
 
 ### 代码格式与静态检查

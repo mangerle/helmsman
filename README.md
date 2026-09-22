@@ -16,7 +16,7 @@
 
 </div>
 
-Helmsman is a modern, memory-safe, and reliable GRUB bootloader configuration tool engineered in Rust. Designed as a robust successor to the classic Grub Customizer, Helmsman provides an intuitive user experience without compromising system stability, security, or distribution upgrade compatibility.
+Helmsman is a modern, memory-safe, and reliable GRUB bootloader configuration tool engineered in Rust. Designed as a robust successor to the classic Grub Customizer, Helmsman provides a headless UI state machine and privilege-separated daemon foundation; a desktop GUI frontend is planned and not yet shipped in this tree.
 
 ---
 
@@ -52,6 +52,7 @@ The project is structured as a modular Cargo workspace:
 - **`crates/grub-boot-reader`**: Parses `/boot/grub/grub.cfg` to extract the entry hierarchy and introspect kernel paths, initrd images, root UUIDs, boot parameters, and chainloader paths.
 - **`crates/grub-distro-adapter`**: Detects and abstracts distribution-specific paths and commands (`update-grub` vs. `grub2-mkconfig`, EFI mount paths, etc.).
 - **`crates/grub-transaction-engine`**: Handles atomic writes (`atomic_write`), unified diff calculations, and automated snapshot management.
+- **`crates/helmsman-client`**: Unprivileged D-Bus contract layer (DTOs, Polkit action IDs, and type-safe system-bus proxies) consumed by UI and third-party tools.
 - **`crates/helmsman-daemon`**: The privileged background worker service, providing transactional configuration application, syntax validation, and D-Bus integration.
 - **`crates/helmsman-ui`**: Headless UI state machine and application state management, decoupling business logic and draft workflows from rendering toolkits.
 
@@ -93,7 +94,7 @@ cargo build --release
 All crates include thorough unit and integration test suites:
 
 ```bash
-cargo test --workspace --features helmsman-daemon/test-support
+cargo test --workspace --features helmsman-daemon/test-support  # 需在启用 test-support 的 crate 上执行，或分别指定 -p
 ```
 
 ### Static Analysis and Code Formatting
