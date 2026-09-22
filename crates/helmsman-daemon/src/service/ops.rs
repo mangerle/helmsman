@@ -71,7 +71,7 @@ impl GrubService {
         self.rollback_to_snapshot_as(snapshot_id, resolve_caller_uid())
     }
 
-    /// 以显式调用方 UID 回滚至指定快照
+    /// 以显式调用方 UID 回滚至指定快照，并重新生成引导配置
     ///
     /// # Errors
     /// 当快照列表无法读取、未找到 ID 或还原失败时返回对应的 [`DaemonError`]。
@@ -99,7 +99,31 @@ impl GrubService {
                 reason: e.to_string(),
             })?;
 
-            info!("成功还原历史快照: {}", snapshot_id);
+            // 还原配置后必须重新生成 grub.cfg，否则磁盘配置与引导脚本不一致
+            let rebuild_cmd = SafeCommand::new(&self.distro_profile.update_command)
+                .and_then(|c| c.args(&self.distro_profile.command_args))
+                .map_err(DaemonError::SecurityCheckFailed)?;
+
+            let rebuild_output = rebuild_cmd
+                .output_with_timeout(std::time::Duration::from_secs(60))
+                .map_err(|e| DaemonError::CommandLaunchFailed {
+                    command: self.distro_profile.update_command.clone(),
+                    reason: format!("快照已还原但引导重建失败: {e}"),
+                })?;
+
+            if !rebuild_output.status.success() {
+                let stderr = String::from_utf8_lossy(&rebuild_output.stderr);
+                return Err(DaemonError::CommandLaunchFailed {
+                    command: self.distro_profile.update_command.clone(),
+                    reason: format!(
+                        "快照已还原但引导重建退出码非零 ({:?}): {}",
+                        rebuild_output.status.code(),
+                        stderr.trim()
+                    ),
+                });
+            }
+
+            info!("成功还原历史快照并重建引导配置: {}", snapshot_id);
             Ok(())
         })();
 

@@ -26,7 +26,13 @@ fn test_service_apply_and_rollback() {
         name: "Test Ubuntu".to_string(),
         firmware: FirmwareType::Uefi,
         config_path: "/boot/grub/grub.cfg".to_string(),
+        #[cfg(windows)]
+        update_command: "cmd".to_string(),
+        #[cfg(windows)]
+        command_args: vec!["/c".to_string(), "exit".to_string(), "0".to_string()],
+        #[cfg(not(windows))]
         update_command: "true".to_string(),
+        #[cfg(not(windows))]
         command_args: Vec::new(),
         check_command: "true".to_string(),
         check_command_args: Vec::new(),
