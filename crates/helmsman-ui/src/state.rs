@@ -159,6 +159,26 @@ impl AppState {
             .unwrap_or(5)
     }
 
+    /// 设置倒计时显示风格（menu / hidden / countdown）
+    pub fn set_timeout_style(&mut self, style: &str) {
+        self.draft_config.set("GRUB_TIMEOUT_STYLE", style);
+    }
+
+    /// 获取倒计时显示风格
+    pub fn get_timeout_style(&self) -> &str {
+        self.draft_config.get("GRUB_TIMEOUT_STYLE").unwrap_or("")
+    }
+
+    /// 设置基础内核参数（GRUB_CMDLINE_LINUX）
+    pub fn set_cmdline_linux(&mut self, cmdline: &str) {
+        self.draft_config.set("GRUB_CMDLINE_LINUX", cmdline);
+    }
+
+    /// 获取基础内核参数
+    pub fn get_cmdline_linux(&self) -> &str {
+        self.draft_config.get("GRUB_CMDLINE_LINUX").unwrap_or("")
+    }
+
     /// 设置全局内核参数
     pub fn set_cmdline_default(&mut self, cmdline: &str) {
         self.draft_config.set("GRUB_CMDLINE_LINUX_DEFAULT", cmdline);

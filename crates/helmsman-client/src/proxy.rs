@@ -17,6 +17,12 @@ pub trait HelmsmanApi {
     /// 查询当前系统与引导适配器状态
     fn get_system_status(&self) -> zbus::Result<SystemStatusDto>;
 
+    /// 读取当前 /etc/default/grub 原文
+    fn get_current_config(&self) -> zbus::Result<String>;
+
+    /// 查询服务版本号
+    fn get_version(&self) -> zbus::Result<String>;
+
     /// 列出所有可用的历史配置快照
     fn list_snapshots(&self) -> zbus::Result<Vec<SnapshotDto>>;
 

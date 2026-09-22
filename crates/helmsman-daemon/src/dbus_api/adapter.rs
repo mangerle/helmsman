@@ -141,6 +141,34 @@ impl HelmsmanDbusAdapter {
         })
     }
 
+    /// 读取当前 /etc/default/grub 原文
+    pub async fn get_current_config(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<String, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        let service = Arc::clone(&self.service);
+        tokio::task::spawn_blocking(move || {
+            std::fs::read_to_string(&service.default_config_path)
+                .map_err(|e| HelmsmanDbusError::Failed(format!("读取当前配置失败: {e}")))
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("配置读取任务异常终止: {e}")))?
+    }
+
+    /// 查询服务版本号
+    pub async fn get_version(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<String, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        Ok(env!("CARGO_PKG_VERSION").to_string())
+    }
+
     /// 列出所有可用的历史配置快照
     pub async fn list_snapshots(
         &self,
