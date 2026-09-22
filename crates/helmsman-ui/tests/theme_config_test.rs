@@ -1,4 +1,5 @@
 use grub_config_parser::parse_grub_config;
+use helmsman_ui::i18n::Language;
 use helmsman_ui::{AppState, ImpactAnalyzer, RiskLevel, SafetyValidator};
 
 #[test]
@@ -41,7 +42,7 @@ fn test_safety_validator_theme_rules() {
     let valid_cfg = parse_grub_config(
         "GRUB_THEME=\"/boot/grub/themes/starfield/theme.txt\"\nGRUB_BACKGROUND=\"/boot/bg.png\"\n",
     );
-    let issues = SafetyValidator::validate(&valid_cfg);
+    let issues = SafetyValidator::validate(&valid_cfg, Language::ZhCn);
     assert!(
         !issues
             .iter()
@@ -51,7 +52,7 @@ fn test_safety_validator_theme_rules() {
     // 2. 主题路径异常（未以 theme.txt 结尾）
     let invalid_theme_cfg =
         parse_grub_config("GRUB_THEME=\"/boot/grub/themes/starfield/style.conf\"\n");
-    let issues_t = SafetyValidator::validate(&invalid_theme_cfg);
+    let issues_t = SafetyValidator::validate(&invalid_theme_cfg, Language::ZhCn);
     let theme_issue = issues_t
         .iter()
         .find(|i| i.title.contains("主题路径格式异常"))
@@ -60,7 +61,7 @@ fn test_safety_validator_theme_rules() {
 
     // 3. 背景壁纸格式异常（如 .bmp）
     let invalid_bg_cfg = parse_grub_config("GRUB_BACKGROUND=\"/boot/image.bmp\"\n");
-    let issues_b = SafetyValidator::validate(&invalid_bg_cfg);
+    let issues_b = SafetyValidator::validate(&invalid_bg_cfg, Language::ZhCn);
     let bg_issue = issues_b
         .iter()
         .find(|i| i.title.contains("背景壁纸格式不支持"))
@@ -76,7 +77,7 @@ fn test_impact_analyzer_theme_and_background() {
     let draft_cfg = parse_grub_config(
         "GRUB_DEFAULT=0\nGRUB_THEME=\"/boot/grub/themes/vimix/theme.txt\"\nGRUB_BACKGROUND=\"/boot/bg.png\"\n",
     );
-    let report = ImpactAnalyzer::analyze(&orig_cfg, &draft_cfg);
+    let report = ImpactAnalyzer::analyze(&orig_cfg, &draft_cfg, Language::ZhCn);
 
     let theme_item = report
         .items

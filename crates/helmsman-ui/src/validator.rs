@@ -1,3 +1,4 @@
+use crate::i18n::{Language, TextKey, format_text, get_text};
 use grub_config_parser::GrubConfigFile;
 use std::fmt;
 
@@ -12,13 +13,21 @@ pub enum RiskLevel {
     DangerBlocked,
 }
 
+impl RiskLevel {
+    /// 获取指定语言的风险等级标签
+    pub fn label(&self, lang: Language) -> &'static str {
+        match self {
+            RiskLevel::Safe => get_text(lang, TextKey::RiskSafe),
+            RiskLevel::Warning => get_text(lang, TextKey::RiskWarning),
+            RiskLevel::DangerBlocked => get_text(lang, TextKey::RiskDanger),
+        }
+    }
+}
+
 impl fmt::Display for RiskLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RiskLevel::Safe => write!(f, "安全"),
-            RiskLevel::Warning => write!(f, "警告"),
-            RiskLevel::DangerBlocked => write!(f, "致命危险"),
-        }
+        // 日志与调试输出默认中文，与工程日志规范一致
+        write!(f, "{}", self.label(Language::ZhCn))
     }
 }
 
@@ -39,12 +48,12 @@ pub struct ValidationIssue {
 pub struct SafetyValidator;
 
 impl SafetyValidator {
-    /// 校验待提交的 GRUB 配置文件，输出发现的所有风险问题
+    /// 校验待提交的 GRUB 配置文件，输出指定语言的风险问题列表
     ///
     /// # 设计原理
     /// - **实现初衷**：杜绝用户误操作将系统引导修改至不可恢复状态（开机变砖）。
     /// - **核心优势**：纯内存规则引擎，在用户发起特权写入请求前第一步拦截，保障安全性。
-    pub fn validate(config: &GrubConfigFile) -> Vec<ValidationIssue> {
+    pub fn validate(config: &GrubConfigFile, lang: Language) -> Vec<ValidationIssue> {
         let mut issues = Vec::new();
 
         // 规则 1：检查倒计时与静默模式结合（致命阻断）
@@ -55,8 +64,8 @@ impl SafetyValidator {
         if timeout_val == 0 && (timeout_style == "hidden" || timeout_style.is_empty()) {
             issues.push(ValidationIssue {
                 level: RiskLevel::DangerBlocked,
-                title: "倒计时为 0 且处于静默模式".to_string(),
-                message: "开机等待时间设为 0 且未显示菜单，将导致系统开机时完全无法通过按 Esc 唤出救援菜单。一旦默认内核异常，系统将无法自愈进入恢复模式！".to_string(),
+                title: get_text(lang, TextKey::ValidTimeoutZeroTitle).to_string(),
+                message: get_text(lang, TextKey::ValidTimeoutZeroMessage).to_string(),
                 can_proceed: false,
             });
         }
@@ -67,8 +76,8 @@ impl SafetyValidator {
         {
             issues.push(ValidationIssue {
                 level: RiskLevel::Warning,
-                title: "默认启动项为空".to_string(),
-                message: "未指定明确的默认启动项，GRUB 将默认选择菜单第一项。若第一项非正常内核，可能导致启动异常。".to_string(),
+                title: get_text(lang, TextKey::ValidEmptyDefaultTitle).to_string(),
+                message: get_text(lang, TextKey::ValidEmptyDefaultMessage).to_string(),
                 can_proceed: true,
             });
         }
@@ -83,9 +92,8 @@ impl SafetyValidator {
         if is_empty_default && is_empty_linux {
             issues.push(ValidationIssue {
                 level: RiskLevel::Warning,
-                title: "内核引导参数为空".to_string(),
-                message: "全局内核参数完全为空，可能会丢失关键驱动参数或根分区挂载选项。"
-                    .to_string(),
+                title: get_text(lang, TextKey::ValidEmptyCmdlineTitle).to_string(),
+                message: get_text(lang, TextKey::ValidEmptyCmdlineMessage).to_string(),
                 can_proceed: true,
             });
         }
@@ -96,10 +104,11 @@ impl SafetyValidator {
             if !trimmed.is_empty() && !trimmed.ends_with("theme.txt") {
                 issues.push(ValidationIssue {
                     level: RiskLevel::Warning,
-                    title: "主题路径格式异常".to_string(),
-                    message: format!(
-                        "配置的主题路径 '{}' 未以 'theme.txt' 结尾。GRUB 官方规范要求 GRUB_THEME 必须指向具体的主题描述文件。",
-                        trimmed
+                    title: get_text(lang, TextKey::ValidThemePathTitle).to_string(),
+                    message: format_text(
+                        lang,
+                        TextKey::ValidThemePathMessage,
+                        &[("path", trimmed)],
                     ),
                     can_proceed: true,
                 });
@@ -114,10 +123,11 @@ impl SafetyValidator {
             if !trimmed.is_empty() && !has_valid_ext {
                 issues.push(ValidationIssue {
                     level: RiskLevel::Warning,
-                    title: "背景壁纸格式不支持".to_string(),
-                    message: format!(
-                        "配置的背景图片 '{}' 扩展名不受支持。GRUB 仅支持 PNG、JPEG 或 TGA 格式的位图。",
-                        bg_path.trim()
+                    title: get_text(lang, TextKey::ValidBgFormatTitle).to_string(),
+                    message: format_text(
+                        lang,
+                        TextKey::ValidBgFormatMessage,
+                        &[("path", bg_path.trim())],
                     ),
                     can_proceed: true,
                 });
@@ -147,7 +157,7 @@ mod tests {
         let content =
             "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"\n";
         let config = parse_grub_config(content);
-        let issues = SafetyValidator::validate(&config);
+        let issues = SafetyValidator::validate(&config, Language::ZhCn);
 
         assert!(issues.is_empty());
         assert_eq!(SafetyValidator::max_risk_level(&issues), RiskLevel::Safe);
@@ -157,25 +167,30 @@ mod tests {
     fn test_validate_danger_zero_timeout_hidden() {
         let content = "GRUB_DEFAULT=0\nGRUB_TIMEOUT=0\nGRUB_TIMEOUT_STYLE=hidden\nGRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"\n";
         let config = parse_grub_config(content);
-        let issues = SafetyValidator::validate(&config);
+        let issues = SafetyValidator::validate(&config, Language::ZhCn);
 
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].level, RiskLevel::DangerBlocked);
         assert!(!issues[0].can_proceed);
+        assert_eq!(issues[0].title, "倒计时为 0 且处于静默模式");
         assert_eq!(
             SafetyValidator::max_risk_level(&issues),
             RiskLevel::DangerBlocked
         );
+
+        let en = SafetyValidator::validate(&config, Language::EnUs);
+        assert_eq!(en[0].title, "Timeout is 0 with silent mode");
     }
 
     #[test]
     fn test_validate_empty_kernel_params_warning() {
         let content = "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX_DEFAULT=\"\"\n";
         let config = parse_grub_config(content);
-        let issues = SafetyValidator::validate(&config);
+        let issues = SafetyValidator::validate(&config, Language::ZhCn);
 
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].level, RiskLevel::Warning);
         assert!(issues[0].can_proceed);
+        assert_eq!(issues[0].title, "内核引导参数为空");
     }
 }

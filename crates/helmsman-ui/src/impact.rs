@@ -1,3 +1,4 @@
+use crate::i18n::{Language, TextKey, format_text, get_text};
 use grub_config_parser::GrubConfigFile;
 
 /// 单项配置变更语义影响条目
@@ -5,7 +6,7 @@ use grub_config_parser::GrubConfigFile;
 pub struct ImpactItem {
     /// 影响条目标题
     pub title: String,
-    /// 通俗中文解释与效果说明
+    /// 通俗解释与效果说明
     pub explanation: String,
 }
 
@@ -27,12 +28,16 @@ impl ImpactReport {
 pub struct ImpactAnalyzer;
 
 impl ImpactAnalyzer {
-    /// 对比原始配置与草稿配置，生成通俗易懂的中文影响分析报告
+    /// 对比原始配置与草稿配置，生成指定语言的通俗影响分析报告
     ///
     /// # 设计原理
     /// - **实现初衷**：普通用户难以从 `GRUB_CMDLINE_LINUX_DEFAULT="nomodeset"` 等底层键值理解对启动的实际影响。
-    /// - **核心优势**：将底层参数变化转换为清晰的系统行为描述，大幅消除用户对引导修改的恐惧心理。
-    pub fn analyze(original: &GrubConfigFile, draft: &GrubConfigFile) -> ImpactReport {
+    /// - **核心优势**：将底层参数变化转换为清晰的系统行为描述，并按界面语言输出文案。
+    pub fn analyze(
+        original: &GrubConfigFile,
+        draft: &GrubConfigFile,
+        lang: Language,
+    ) -> ImpactReport {
         let mut items = Vec::new();
 
         // 1. 分析倒计时变更
@@ -40,18 +45,20 @@ impl ImpactAnalyzer {
         let draft_timeout = draft.get("GRUB_TIMEOUT").unwrap_or("5");
         if orig_timeout != draft_timeout {
             let explanation = if draft_timeout == "0" {
-                format!(
-                    "开机等待时间由 {} 秒调整为 0 秒，开机时将不显示选择菜单，直接跳入默认启动项。",
-                    orig_timeout
+                format_text(
+                    lang,
+                    TextKey::ImpactTimeoutToZero,
+                    &[("orig", orig_timeout)],
                 )
             } else {
-                format!(
-                    "开机等待倒计时由 {} 秒调整为 {} 秒，用户将有更充裕或更精简的时间选择启动项。",
-                    orig_timeout, draft_timeout
+                format_text(
+                    lang,
+                    TextKey::ImpactTimeoutAdjusted,
+                    &[("orig", orig_timeout), ("draft", draft_timeout)],
                 )
             };
             items.push(ImpactItem {
-                title: "开机倒计时调整".to_string(),
+                title: get_text(lang, TextKey::ImpactTimeoutTitle).to_string(),
                 explanation,
             });
         }
@@ -61,16 +68,16 @@ impl ImpactAnalyzer {
         let draft_default = draft.get("GRUB_DEFAULT").unwrap_or("0");
         if orig_default != draft_default {
             let explanation = if draft_default == "saved" {
-                "默认启动项切换为记忆模式 (saved)，系统将自动记录并默认启动上一次成功进入的系统。"
-                    .to_string()
+                get_text(lang, TextKey::ImpactDefaultSaved).to_string()
             } else {
-                format!(
-                    "默认启动项由 '{}' 切换为 '{}'，开机倒计时结束后将默认启动该项。",
-                    orig_default, draft_default
+                format_text(
+                    lang,
+                    TextKey::ImpactDefaultSwitched,
+                    &[("orig", orig_default), ("draft", draft_default)],
                 )
             };
             items.push(ImpactItem {
-                title: "默认启动项切换".to_string(),
+                title: get_text(lang, TextKey::ImpactDefaultTitle).to_string(),
                 explanation,
             });
         }
@@ -86,7 +93,7 @@ impl ImpactAnalyzer {
             .to_string();
 
         if orig_cmdline != draft_cmdline {
-            Self::analyze_cmdline_diff(&orig_cmdline, &draft_cmdline, &mut items);
+            Self::analyze_cmdline_diff(&orig_cmdline, &draft_cmdline, lang, &mut items);
         }
 
         // 4. 分析 os-prober 探测开关变更
@@ -95,13 +102,13 @@ impl ImpactAnalyzer {
         if orig_prober != draft_prober {
             if draft_prober.is_none() || draft_prober == Some("false") {
                 items.push(ImpactItem {
-                    title: "启用多系统探测 (os-prober)".to_string(),
-                    explanation: "生成引导时将自动扫描硬盘上的 Windows 或其他 Linux 系统，并在开机菜单中添加对应条目。".to_string(),
+                    title: get_text(lang, TextKey::ImpactOsProberEnableTitle).to_string(),
+                    explanation: get_text(lang, TextKey::ImpactOsProberEnableExplain).to_string(),
                 });
             } else {
                 items.push(ImpactItem {
-                    title: "禁用多系统探测 (os-prober)".to_string(),
-                    explanation: "生成引导时将跳过其他硬盘分区的系统扫描，可加快引导生成速度，但将隐藏其他系统。".to_string(),
+                    title: get_text(lang, TextKey::ImpactOsProberDisableTitle).to_string(),
+                    explanation: get_text(lang, TextKey::ImpactOsProberDisableExplain).to_string(),
                 });
             }
         }
@@ -113,26 +120,32 @@ impl ImpactAnalyzer {
             match (orig_theme, draft_theme) {
                 (None, Some(new_t)) => {
                     items.push(ImpactItem {
-                        title: "启用开机视觉主题".to_string(),
-                        explanation: format!(
-                            "开机将应用图形化主题包 '{}'，提供背景壁纸、菜单框与倒计时样式美化。",
-                            new_t
+                        title: get_text(lang, TextKey::ImpactThemeEnableTitle).to_string(),
+                        explanation: format_text(
+                            lang,
+                            TextKey::ImpactThemeEnableExplain,
+                            &[("theme", new_t)],
                         ),
                     });
                 }
                 (Some(old_t), None) => {
                     items.push(ImpactItem {
-                        title: "禁用开机视觉主题".to_string(),
-                        explanation: format!(
-                            "清除了主题包 '{}'，开机时将恢复为简单黑底文本菜单。",
-                            old_t
+                        title: get_text(lang, TextKey::ImpactThemeDisableTitle).to_string(),
+                        explanation: format_text(
+                            lang,
+                            TextKey::ImpactThemeDisableExplain,
+                            &[("theme", old_t)],
                         ),
                     });
                 }
                 (Some(old_t), Some(new_t)) => {
                     items.push(ImpactItem {
-                        title: "切换开机视觉主题".to_string(),
-                        explanation: format!("开机主题由 '{}' 切换为 '{}'。", old_t, new_t),
+                        title: get_text(lang, TextKey::ImpactThemeSwitchTitle).to_string(),
+                        explanation: format_text(
+                            lang,
+                            TextKey::ImpactThemeSwitchExplain,
+                            &[("old", old_t), ("new", new_t)],
+                        ),
                     });
                 }
                 (None, None) => {}
@@ -146,20 +159,28 @@ impl ImpactAnalyzer {
             match (orig_bg, draft_bg) {
                 (None, Some(new_bg)) => {
                     items.push(ImpactItem {
-                        title: "设置自定义开机壁纸".to_string(),
-                        explanation: format!("开机引导背景将显示图片 '{}'。", new_bg),
+                        title: get_text(lang, TextKey::ImpactBgSetTitle).to_string(),
+                        explanation: format_text(
+                            lang,
+                            TextKey::ImpactBgSetExplain,
+                            &[("path", new_bg)],
+                        ),
                     });
                 }
                 (Some(_), None) => {
                     items.push(ImpactItem {
-                        title: "清除自定义开机壁纸".to_string(),
-                        explanation: "开机将使用默认单色背景。".to_string(),
+                        title: get_text(lang, TextKey::ImpactBgClearTitle).to_string(),
+                        explanation: get_text(lang, TextKey::ImpactBgClearExplain).to_string(),
                     });
                 }
                 (Some(old_bg), Some(new_bg)) => {
                     items.push(ImpactItem {
-                        title: "更换自定义开机壁纸".to_string(),
-                        explanation: format!("壁纸由 '{}' 更换为 '{}'。", old_bg, new_bg),
+                        title: get_text(lang, TextKey::ImpactBgChangeTitle).to_string(),
+                        explanation: format_text(
+                            lang,
+                            TextKey::ImpactBgChangeExplain,
+                            &[("old", old_bg), ("new", new_bg)],
+                        ),
                     });
                 }
                 (None, None) => {}
@@ -170,31 +191,28 @@ impl ImpactAnalyzer {
     }
 
     /// 分析内核命令行参数的具体增删语义
-    fn analyze_cmdline_diff(orig: &str, draft: &str, items: &mut Vec<ImpactItem>) {
+    fn analyze_cmdline_diff(orig: &str, draft: &str, lang: Language, items: &mut Vec<ImpactItem>) {
         let orig_tokens: Vec<&str> = orig.split_whitespace().collect();
         let draft_tokens: Vec<&str> = draft.split_whitespace().collect();
 
-        // 检查是否新增了 nomodeset
         if !orig_tokens.contains(&"nomodeset") && draft_tokens.contains(&"nomodeset") {
             items.push(ImpactItem {
-                title: "添加通用显示驱动模式 (nomodeset)".to_string(),
-                explanation: "内核将在图形驱动加载前使用标准通用驱动，适用于因显卡驱动异常导致的开机黑屏排障。".to_string(),
+                title: get_text(lang, TextKey::ImpactNomodesetTitle).to_string(),
+                explanation: get_text(lang, TextKey::ImpactNomodesetExplain).to_string(),
             });
         }
 
-        // 检查是否移除了 quiet
         if orig_tokens.contains(&"quiet") && !draft_tokens.contains(&"quiet") {
             items.push(ImpactItem {
-                title: "关闭静默启动 (移除 quiet)".to_string(),
-                explanation: "系统开机时将在屏幕上完整滚屏打印内核加载与服务启动日志，便于精确定位启动卡顿点。".to_string(),
+                title: get_text(lang, TextKey::ImpactQuietOffTitle).to_string(),
+                explanation: get_text(lang, TextKey::ImpactQuietOffExplain).to_string(),
             });
         }
 
-        // 检查是否移除了 splash
         if orig_tokens.contains(&"splash") && !draft_tokens.contains(&"splash") {
             items.push(ImpactItem {
-                title: "关闭开机动画 (移除 splash)".to_string(),
-                explanation: "开机时将不再显示图形 Logo 或转圈动画，直接呈现文字终端。".to_string(),
+                title: get_text(lang, TextKey::ImpactSplashOffTitle).to_string(),
+                explanation: get_text(lang, TextKey::ImpactSplashOffExplain).to_string(),
             });
         }
     }
@@ -210,12 +228,15 @@ mod tests {
         let orig = parse_grub_config("GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n");
         let draft = parse_grub_config("GRUB_DEFAULT=saved\nGRUB_TIMEOUT=10\n");
 
-        let report = ImpactAnalyzer::analyze(&orig, &draft);
+        let report = ImpactAnalyzer::analyze(&orig, &draft, Language::ZhCn);
         assert_eq!(report.items.len(), 2);
         assert_eq!(report.items[0].title, "开机倒计时调整");
         assert!(report.items[0].explanation.contains("5 秒调整为 10 秒"));
         assert_eq!(report.items[1].title, "默认启动项切换");
         assert!(report.items[1].explanation.contains("记忆模式 (saved)"));
+
+        let en = ImpactAnalyzer::analyze(&orig, &draft, Language::EnUs);
+        assert_eq!(en.items[0].title, "Boot timeout adjusted");
     }
 
     #[test]
@@ -223,7 +244,7 @@ mod tests {
         let orig = parse_grub_config("GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"\n");
         let draft = parse_grub_config("GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash nomodeset\"\n");
 
-        let report = ImpactAnalyzer::analyze(&orig, &draft);
+        let report = ImpactAnalyzer::analyze(&orig, &draft, Language::ZhCn);
         assert_eq!(report.items.len(), 1);
         assert_eq!(report.items[0].title, "添加通用显示驱动模式 (nomodeset)");
         assert!(report.items[0].explanation.contains("显卡驱动异常"));
@@ -234,7 +255,7 @@ mod tests {
         let orig = parse_grub_config("GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"\n");
         let draft = parse_grub_config("GRUB_CMDLINE_LINUX_DEFAULT=\"\"\n");
 
-        let report = ImpactAnalyzer::analyze(&orig, &draft);
+        let report = ImpactAnalyzer::analyze(&orig, &draft, Language::ZhCn);
         assert_eq!(report.items.len(), 2);
         assert!(report.items.iter().any(|i| i.title.contains("quiet")));
         assert!(report.items.iter().any(|i| i.title.contains("splash")));
