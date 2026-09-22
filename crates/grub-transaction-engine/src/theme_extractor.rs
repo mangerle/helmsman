@@ -399,3 +399,103 @@ fn derive_theme_name_from_archive(archive_path: &Path) -> String {
         filename
     }
 }
+
+/// 已安装主题摘要
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledThemeInfo {
+    /// 主题目录名（作为主题标识）
+    pub name: String,
+    /// 主题目录绝对路径
+    pub path: PathBuf,
+    /// 是否包含合法的 theme.txt 描述文件
+    pub has_descriptor: bool,
+}
+
+/// 列出主题根目录下已安装的主题
+///
+/// # Errors
+/// 主题根目录不存在时返回空列表；读取目录失败时返回 [`ThemeSecurityError::IoError`]。
+pub fn list_installed_themes(
+    themes_root: &Path,
+) -> Result<Vec<InstalledThemeInfo>, ThemeSecurityError> {
+    if !themes_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut themes = Vec::new();
+    let read_dir = fs::read_dir(themes_root).map_err(|e| ThemeSecurityError::IoError {
+        action: "读取主题根目录".to_string(),
+        path: themes_root.to_path_buf(),
+        reason: e.to_string(),
+    })?;
+
+    for entry in read_dir {
+        let entry = entry.map_err(|e| ThemeSecurityError::IoError {
+            action: "遍历主题根目录".to_string(),
+            path: themes_root.to_path_buf(),
+            reason: e.to_string(),
+        })?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        // 跳过非法目录名，避免与卸载校验口径不一致
+        if validate_theme_name(name).is_err() {
+            continue;
+        }
+        themes.push(InstalledThemeInfo {
+            name: name.to_string(),
+            has_descriptor: path.join("theme.txt").is_file(),
+            path,
+        });
+    }
+
+    themes.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(themes)
+}
+
+/// 卸载指定名称的主题目录
+///
+/// # Errors
+/// 名称非法、路径穿越或删除失败时返回对应的 [`ThemeSecurityError`]。
+pub fn remove_theme(themes_root: &Path, theme_name: &str) -> Result<(), ThemeSecurityError> {
+    validate_theme_name(theme_name)?;
+    let target = themes_root.join(theme_name);
+
+    let canonical_root = themes_root
+        .canonicalize()
+        .map_err(|e| ThemeSecurityError::IoError {
+            action: "解析主题根目录".to_string(),
+            path: themes_root.to_path_buf(),
+            reason: e.to_string(),
+        })?;
+    let canonical_target = target
+        .canonicalize()
+        .map_err(|e| ThemeSecurityError::IoError {
+            action: "解析主题目录".to_string(),
+            path: target.clone(),
+            reason: e.to_string(),
+        })?;
+
+    if !canonical_target.starts_with(&canonical_root) {
+        return Err(ThemeSecurityError::PathTraversalDetected {
+            entry_path: theme_name.to_string(),
+            target_root: themes_root.to_path_buf(),
+        });
+    }
+    if !canonical_target.is_dir() {
+        return Err(ThemeSecurityError::MissingThemeDescriptor {
+            theme_dir: canonical_target,
+        });
+    }
+
+    fs::remove_dir_all(&canonical_target).map_err(|e| ThemeSecurityError::IoError {
+        action: "删除主题目录".to_string(),
+        path: canonical_target,
+        reason: e.to_string(),
+    })?;
+    Ok(())
+}

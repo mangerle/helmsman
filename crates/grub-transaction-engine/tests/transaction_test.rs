@@ -71,3 +71,29 @@ fn test_snapshot_and_restore() {
     let restored = fs::read_to_string(&target_file).unwrap();
     assert_eq!(restored, "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n");
 }
+
+#[test]
+fn test_delete_and_export_snapshot() {
+    let temp_root = std::env::temp_dir().join("helmsman_test_snap_del_export");
+    let _ = std::fs::remove_dir_all(&temp_root);
+    std::fs::create_dir_all(&temp_root).unwrap();
+    let target = temp_root.join("default_grub");
+    let backup = temp_root.join("backups");
+    std::fs::create_dir_all(&backup).unwrap();
+    std::fs::write(&target, "GRUB_DEFAULT=0\n").unwrap();
+
+    let snap = grub_transaction_engine::create_snapshot(&target, &backup, "测试").unwrap();
+
+    let export_to = temp_root.join("exported.cfg");
+    let exported = grub_transaction_engine::export_snapshot(&backup, &snap.id, &export_to).unwrap();
+    assert!(exported.is_file());
+    assert_eq!(
+        std::fs::read_to_string(&export_to).unwrap(),
+        "GRUB_DEFAULT=0\n"
+    );
+
+    grub_transaction_engine::delete_snapshot(&backup, &snap.id).unwrap();
+    let left = grub_transaction_engine::list_snapshots(&backup).unwrap();
+    assert!(left.is_empty());
+    assert!(grub_transaction_engine::delete_snapshot(&backup, &snap.id).is_err());
+}

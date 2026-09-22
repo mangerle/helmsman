@@ -2,7 +2,10 @@ use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_u
 use crate::executor::SafeCommand;
 use crate::service::{DaemonError, GrubService, TransactionOptions};
 use grub_config_parser::parse_grub_config;
-use grub_transaction_engine::{check_package_manager_locks, list_snapshots, restore_snapshot};
+use grub_transaction_engine::{
+    InstalledThemeInfo, check_package_manager_locks, delete_snapshot, export_snapshot,
+    list_installed_themes, list_snapshots, remove_theme, restore_snapshot,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -228,6 +231,138 @@ impl GrubService {
             diff_summary: None,
         });
 
+        res
+    }
+
+    /// 列出已安装的 GRUB 主题
+    ///
+    /// # Errors
+    /// 主题目录读取失败时返回 [`DaemonError::ThemeInstallFailed`]。
+    pub fn list_themes(&self) -> Result<Vec<InstalledThemeInfo>, DaemonError> {
+        list_installed_themes(&self.themes_dir).map_err(|e| DaemonError::ThemeInstallFailed {
+            reason: e.to_string(),
+        })
+    }
+
+    /// 卸载指定名称的主题（审计 UID 取自进程环境回退）
+    ///
+    /// # Errors
+    /// 名称非法、路径穿越或删除失败时返回对应的 [`DaemonError`]。
+    pub fn remove_theme(&self, theme_name: &str) -> Result<(), DaemonError> {
+        self.remove_theme_as(theme_name, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 卸载主题
+    ///
+    /// # Errors
+    /// 名称非法、路径穿越或删除失败时返回对应的 [`DaemonError`]。
+    pub fn remove_theme_as(&self, theme_name: &str, caller_uid: u32) -> Result<(), DaemonError> {
+        let start_time = Instant::now();
+        let res = remove_theme(&self.themes_dir, theme_name).map_err(|e| {
+            DaemonError::ThemeInstallFailed {
+                reason: format!("卸载主题 '{theme_name}' 失败: {e}"),
+            }
+        });
+
+        record_audit_event(&AuditEvent {
+            caller_uid,
+            action: AuditAction::RemoveTheme,
+            reason: format!("卸载主题 '{theme_name}'"),
+            snapshot_id: None,
+            success: res.is_ok(),
+            duration: start_time.elapsed(),
+            diff_summary: None,
+        });
+        res
+    }
+
+    /// 删除指定历史快照（审计 UID 取自进程环境回退）
+    ///
+    /// # Errors
+    /// 未找到快照或删除失败时返回对应的 [`DaemonError`]。
+    pub fn delete_snapshot(&self, snapshot_id: &str) -> Result<(), DaemonError> {
+        self.delete_snapshot_as(snapshot_id, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 删除快照
+    ///
+    /// # Errors
+    /// 未找到快照或删除失败时返回对应的 [`DaemonError`]。
+    pub fn delete_snapshot_as(
+        &self,
+        snapshot_id: &str,
+        caller_uid: u32,
+    ) -> Result<(), DaemonError> {
+        let start_time = Instant::now();
+        let res = delete_snapshot(&self.backup_dir, snapshot_id).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                DaemonError::SnapshotNotFound {
+                    id: snapshot_id.to_string(),
+                }
+            } else {
+                DaemonError::SnapshotRestoreFailed {
+                    id: snapshot_id.to_string(),
+                    reason: e.to_string(),
+                }
+            }
+        });
+
+        record_audit_event(&AuditEvent {
+            caller_uid,
+            action: AuditAction::DeleteSnapshot,
+            reason: format!("删除快照 {snapshot_id}"),
+            snapshot_id: Some(snapshot_id.to_string()),
+            success: res.is_ok(),
+            duration: start_time.elapsed(),
+            diff_summary: None,
+        });
+        res
+    }
+
+    /// 将快照导出到指定路径（审计 UID 取自进程环境回退）
+    ///
+    /// # Errors
+    /// 未找到快照、目标路径非法或复制失败时返回对应的 [`DaemonError`]。
+    pub fn export_snapshot(
+        &self,
+        snapshot_id: &str,
+        dest_path: &Path,
+    ) -> Result<PathBuf, DaemonError> {
+        self.export_snapshot_as(snapshot_id, dest_path, resolve_caller_uid())
+    }
+
+    /// 以显式调用方 UID 导出快照
+    ///
+    /// # Errors
+    /// 未找到快照、目标路径非法或复制失败时返回对应的 [`DaemonError`]。
+    pub fn export_snapshot_as(
+        &self,
+        snapshot_id: &str,
+        dest_path: &Path,
+        caller_uid: u32,
+    ) -> Result<PathBuf, DaemonError> {
+        let start_time = Instant::now();
+        let res = export_snapshot(&self.backup_dir, snapshot_id, dest_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                DaemonError::SnapshotNotFound {
+                    id: snapshot_id.to_string(),
+                }
+            } else {
+                DaemonError::AtomicWriteFailed {
+                    reason: format!("导出快照 '{snapshot_id}' 失败: {e}"),
+                }
+            }
+        });
+
+        record_audit_event(&AuditEvent {
+            caller_uid,
+            action: AuditAction::ExportSnapshot,
+            reason: format!("导出快照 {snapshot_id} 至 {}", dest_path.display()),
+            snapshot_id: Some(snapshot_id.to_string()),
+            success: res.is_ok(),
+            duration: start_time.elapsed(),
+            diff_summary: None,
+        });
         res
     }
 

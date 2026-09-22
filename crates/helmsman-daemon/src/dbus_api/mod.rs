@@ -8,7 +8,9 @@ pub use adapter::{
 };
 pub use constants::{DBUS_INTERFACE_V1, DBUS_OBJECT_PATH, DBUS_SERVICE_NAME, polkit_actions};
 pub use error::HelmsmanDbusError;
-pub use helmsman_client::{ApplyResultDto, DiffResultDto, SnapshotDto, SystemStatusDto};
+pub use helmsman_client::{
+    ApplyResultDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto,
+};
 
 #[cfg(test)]
 mod tests;

@@ -14,7 +14,7 @@ pub use custom_manager::{CustomManager, DEFAULT_ALIASES_PATH, DEFAULT_CUSTOM_SCR
 pub use dbus_api::{
     ApplyResultDto, DBUS_INTERFACE_V1, DBUS_OBJECT_PATH, DBUS_SERVICE_NAME, DiffResultDto,
     HelmsmanDbusAdapter, HelmsmanDbusAdapterProxy, HelmsmanDbusAdapterProxyBlocking,
-    HelmsmanDbusError, SnapshotDto, SystemStatusDto, polkit_actions,
+    HelmsmanDbusError, SnapshotDto, SystemStatusDto, ThemeInfoDto, polkit_actions,
 };
 pub use executor::{SafeCommand, SecurityError};
 pub use idle::{BusyGuard, IdleWatcher};

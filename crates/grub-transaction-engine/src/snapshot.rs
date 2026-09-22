@@ -198,3 +198,59 @@ pub fn prune_snapshots(backup_base_dir: &Path, max_keep: usize) -> io::Result<us
     }
     Ok(removed)
 }
+
+/// 删除指定快照目录
+///
+/// # Errors
+/// 未找到快照或删除失败时返回 `io::Error`。
+pub fn delete_snapshot(backup_base_dir: &Path, snapshot_id: &str) -> io::Result<()> {
+    let snapshots = list_snapshots(backup_base_dir)?;
+    let target = snapshots
+        .into_iter()
+        .find(|s| s.id == snapshot_id)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("未找到快照 ID: {snapshot_id}"),
+            )
+        })?;
+
+    if let Some(dir) = target.backup_file.parent() {
+        fs::remove_dir_all(dir)?;
+    }
+    Ok(())
+}
+
+/// 将快照备份文件导出到指定目标路径
+///
+/// # Errors
+/// 未找到快照、目标路径非法或复制失败时返回 `io::Error`。
+pub fn export_snapshot(
+    backup_base_dir: &Path,
+    snapshot_id: &str,
+    dest_path: &Path,
+) -> io::Result<PathBuf> {
+    let snapshots = list_snapshots(backup_base_dir)?;
+    let target = snapshots
+        .into_iter()
+        .find(|s| s.id == snapshot_id)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("未找到快照 ID: {snapshot_id}"),
+            )
+        })?;
+
+    if !target.backup_file.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("快照备份文件丢失: {}", target.backup_file.display()),
+        ));
+    }
+
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(&target.backup_file, dest_path)?;
+    Ok(dest_path.to_path_buf())
+}

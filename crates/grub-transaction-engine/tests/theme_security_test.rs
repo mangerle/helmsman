@@ -1,6 +1,6 @@
 use grub_transaction_engine::{
-    ThemeSecurityError, extract_safe_entries, install_theme_directory, validate_entry_path,
-    validate_theme_name,
+    ThemeSecurityError, extract_safe_entries, install_theme_directory, list_installed_themes,
+    remove_theme, validate_entry_path, validate_theme_name,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -272,4 +272,38 @@ fn test_zip_slip_interception_in_archive() {
     ));
 
     let _ = fs::remove_dir_all(&temp_root);
+}
+
+#[test]
+fn test_list_and_remove_theme() {
+    let temp_root = std::env::temp_dir().join("helmsman_test_list_remove_theme");
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let themes_root = temp_root.join("themes");
+    std::fs::create_dir_all(themes_root.join("vimix")).unwrap();
+    std::fs::write(
+        themes_root.join("vimix").join("theme.txt"),
+        "title-text: V\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(themes_root.join("tela")).unwrap();
+    std::fs::write(
+        themes_root.join("tela").join("theme.txt"),
+        "title-text: T\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(themes_root.join("broken")).unwrap();
+
+    let themes = list_installed_themes(&themes_root).unwrap();
+    assert_eq!(themes.len(), 3);
+    assert_eq!(themes[0].name, "broken");
+    assert!(!themes[0].has_descriptor);
+    assert_eq!(themes[1].name, "tela");
+    assert!(themes[1].has_descriptor);
+
+    remove_theme(&themes_root, "tela").unwrap();
+    let after = list_installed_themes(&themes_root).unwrap();
+    assert_eq!(after.len(), 2);
+    assert!(after.iter().all(|t| t.name != "tela"));
+
+    assert!(remove_theme(&themes_root, "../evil").is_err());
 }

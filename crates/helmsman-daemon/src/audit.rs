@@ -17,6 +17,12 @@ pub enum AuditAction {
     SetAlias,
     /// 提交自定义引导项
     ApplyCustomEntries,
+    /// 卸载主题
+    RemoveTheme,
+    /// 删除快照
+    DeleteSnapshot,
+    /// 导出快照
+    ExportSnapshot,
 }
 
 impl std::fmt::Display for AuditAction {
@@ -28,6 +34,9 @@ impl std::fmt::Display for AuditAction {
             AuditAction::InstallTheme => write!(f, "安装主题压缩包"),
             AuditAction::SetAlias => write!(f, "设置条目别名"),
             AuditAction::ApplyCustomEntries => write!(f, "提交自定义引导项"),
+            AuditAction::RemoveTheme => write!(f, "卸载主题"),
+            AuditAction::DeleteSnapshot => write!(f, "删除快照"),
+            AuditAction::ExportSnapshot => write!(f, "导出快照"),
         }
     }
 }

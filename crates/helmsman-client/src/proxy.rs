@@ -1,4 +1,4 @@
-use crate::types::{ApplyResultDto, DiffResultDto, SnapshotDto, SystemStatusDto};
+use crate::types::{ApplyResultDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto};
 use grub_boot_reader::CustomBootEntry;
 use std::collections::HashMap;
 
@@ -56,4 +56,16 @@ pub trait HelmsmanApi {
 
     /// 安装主题压缩包
     fn install_theme_archive(&self, archive_path: &str, theme_name: &str) -> zbus::Result<String>;
+
+    /// 列出已安装主题
+    fn list_themes(&self) -> zbus::Result<Vec<ThemeInfoDto>>;
+
+    /// 卸载指定主题
+    fn remove_theme(&self, theme_name: &str) -> zbus::Result<()>;
+
+    /// 删除指定快照
+    fn delete_snapshot(&self, snapshot_id: &str) -> zbus::Result<()>;
+
+    /// 导出指定快照到目标路径
+    fn export_snapshot(&self, snapshot_id: &str, dest_path: &str) -> zbus::Result<String>;
 }

@@ -437,4 +437,112 @@ impl HelmsmanDbusAdapter {
 
         Ok(installed_path.to_string_lossy().into_owned())
     }
+
+    /// 列出已安装主题
+    pub async fn list_themes(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<Vec<crate::dbus_api::ThemeInfoDto>, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        let service = Arc::clone(&self.service);
+        let themes = tokio::task::spawn_blocking(move || service.list_themes())
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("主题列表任务异常终止: {e}")))?
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+
+        Ok(themes
+            .into_iter()
+            .map(|t| crate::dbus_api::ThemeInfoDto {
+                name: t.name,
+                path: t.path.to_string_lossy().into_owned(),
+                has_descriptor: t.has_descriptor,
+            })
+            .collect())
+    }
+
+    /// 卸载指定主题（受 Polkit install-theme 权限保护）
+    pub async fn remove_theme(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        theme_name: &str,
+    ) -> Result<(), HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        if theme_name.trim().is_empty() {
+            return Err(HelmsmanDbusError::InvalidArgs(
+                "主题名称不能为空".to_string(),
+            ));
+        }
+
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_INSTALL_THEME)
+            .await?;
+
+        let service = Arc::clone(&self.service);
+        let theme_name = theme_name.trim().to_string();
+        tokio::task::spawn_blocking(move || service.remove_theme_as(&theme_name, caller_uid))
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("主题卸载任务异常终止: {e}")))?
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+    }
+
+    /// 删除指定快照（受 Polkit rollback 权限保护）
+    pub async fn delete_snapshot(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        snapshot_id: &str,
+    ) -> Result<(), HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        if snapshot_id.trim().is_empty() {
+            return Err(HelmsmanDbusError::InvalidArgs(
+                "快照 ID 不能为空".to_string(),
+            ));
+        }
+
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_ROLLBACK)
+            .await?;
+
+        let service = Arc::clone(&self.service);
+        let snapshot_id = snapshot_id.trim().to_string();
+        tokio::task::spawn_blocking(move || service.delete_snapshot_as(&snapshot_id, caller_uid))
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("快照删除任务异常终止: {e}")))?
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+    }
+
+    /// 导出指定快照（受 Polkit read 权限保护）
+    pub async fn export_snapshot(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        snapshot_id: &str,
+        dest_path: &str,
+    ) -> Result<String, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        if snapshot_id.trim().is_empty() || dest_path.trim().is_empty() {
+            return Err(HelmsmanDbusError::InvalidArgs(
+                "快照 ID 与导出路径均不能为空".to_string(),
+            ));
+        }
+
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_READ)
+            .await?;
+
+        let service = Arc::clone(&self.service);
+        let snapshot_id = snapshot_id.trim().to_string();
+        let dest_path = dest_path.trim().to_string();
+        let exported = tokio::task::spawn_blocking(move || {
+            service.export_snapshot_as(&snapshot_id, std::path::Path::new(&dest_path), caller_uid)
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("快照导出任务异常终止: {e}")))?
+        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+
+        Ok(exported.to_string_lossy().into_owned())
+    }
 }

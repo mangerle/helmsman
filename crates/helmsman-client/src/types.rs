@@ -77,3 +77,14 @@ pub struct ApplyResultDto {
     /// 失败时的错误信息（成功时为空字符串）
     pub error_message: String,
 }
+
+/// 已安装主题摘要 DTO
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, zvariant::Type)]
+pub struct ThemeInfoDto {
+    /// 主题名称
+    pub name: String,
+    /// 主题目录路径
+    pub path: String,
+    /// 是否包含 theme.txt
+    pub has_descriptor: bool,
+}
