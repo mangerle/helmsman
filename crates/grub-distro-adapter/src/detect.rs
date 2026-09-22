@@ -64,6 +64,19 @@ fn first_existing(candidates: &[&str], fallback: &str) -> String {
 }
 
 impl DistroProfile {
+    /// 解析主题安装根目录：与主配置同级的 themes 目录
+    ///
+    /// # 设计原理
+    /// - **实现初衷**：Debian/Ubuntu 使用 `/boot/grub/themes`，Fedora/RHEL 使用 `/boot/grub2/themes`，
+    ///   与 `config_path` 所在引导目录保持一致，避免主题装到错误分区。
+    /// - **代价与局限**：若发行版采用非标准布局，需在 profile 构造时覆盖。
+    pub fn themes_dir(&self) -> std::path::PathBuf {
+        std::path::Path::new(&self.config_path)
+            .parent()
+            .map(|p| p.join("themes"))
+            .unwrap_or_else(|| std::path::PathBuf::from("/boot/grub/themes"))
+    }
+
     /// 基于 os-release 文本内容与固件类型进行确定性分析（便于单元测试与静态分析）
     ///
     /// # 设计原理
@@ -351,6 +364,22 @@ mod tests {
         assert!(
             profile.update_command.contains("grub2-mkconfig")
                 || profile.update_command.contains("grub-mkconfig")
+        );
+    }
+
+    #[test]
+    fn test_themes_dir_follows_config_path() {
+        let mut profile = DistroProfile::detect_current_system();
+        profile.config_path = "/boot/grub/grub.cfg".to_string();
+        assert_eq!(
+            profile.themes_dir(),
+            std::path::PathBuf::from("/boot/grub/themes")
+        );
+
+        profile.config_path = "/boot/grub2/grub.cfg".to_string();
+        assert_eq!(
+            profile.themes_dir(),
+            std::path::PathBuf::from("/boot/grub2/themes")
         );
     }
 

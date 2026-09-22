@@ -54,12 +54,13 @@ impl GrubService {
     /// 创建标准系统服务实例
     pub fn new_system_default() -> Self {
         let distro_profile = DistroProfile::detect_current_system();
+        let themes_dir = distro_profile.themes_dir();
         Self {
             default_config_path: PathBuf::from("/etc/default/grub"),
             backup_dir: PathBuf::from("/var/backups/grub-manager"),
             distro_profile,
             lock_descriptors: default_system_locks(),
-            themes_dir: PathBuf::from("/boot/grub/themes"),
+            themes_dir,
         }
     }
 
