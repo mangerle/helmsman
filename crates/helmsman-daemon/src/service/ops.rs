@@ -1,7 +1,9 @@
 use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
 use crate::executor::SafeCommand;
-use crate::service::{DaemonError, GrubService};
+use crate::service::{DaemonError, GrubService, TransactionOptions};
+use grub_config_parser::parse_grub_config;
 use grub_transaction_engine::{check_package_manager_locks, list_snapshots, restore_snapshot};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::{debug, info};
@@ -241,6 +243,50 @@ impl GrubService {
         })
     }
 
+    /// 确保配置处于 saved 记忆模式（GRUB_DEFAULT=saved）
+    ///
+    /// # 设计原理
+    /// - **实现初衷**：`grub-set-default` 只写 grubenv 的 `saved_entry`，若 `GRUB_DEFAULT` 仍为
+    ///   数字索引或固定标题则切换不会生效。必须先原子切换到 saved 模式再写入目标项。
+    /// - **核心优势**：复用既有事务（快照 + 原子写 + 引导重建），失败可回滚。
+    fn ensure_saved_default_mode(&self, options: &TransactionOptions) -> Result<(), DaemonError> {
+        let current = fs::read_to_string(&self.default_config_path).map_err(|e| {
+            DaemonError::ConfigReadFailed {
+                path: self.default_config_path.clone(),
+                reason: e.to_string(),
+            }
+        })?;
+
+        let mut config = parse_grub_config(&current);
+        if config.get("GRUB_DEFAULT") == Some("saved") {
+            return Ok(());
+        }
+
+        config.set("GRUB_DEFAULT", "saved");
+        config.set("GRUB_SAVEDEFAULT", "true");
+        let new_config = config.serialize();
+
+        let result = self.apply_changes_as(
+            &new_config,
+            "自动启用 saved 记忆模式以支持快速切换默认项",
+            options,
+            resolve_caller_uid(),
+        )?;
+
+        if !result.success {
+            return Err(DaemonError::CommandLaunchFailed {
+                command: self.distro_profile.update_command.clone(),
+                reason: format!(
+                    "启用 saved 记忆模式失败: {}",
+                    result
+                        .error_message
+                        .unwrap_or_else(|| "引导更新未成功".to_string())
+                ),
+            });
+        }
+        Ok(())
+    }
+
     /// 通过 grubenv 快速设置默认启动项（审计 UID 取自进程环境回退）
     ///
     /// # Errors
@@ -267,6 +313,9 @@ impl GrubService {
             })?;
 
             debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
+
+            // grub-set-default 仅在 GRUB_DEFAULT=saved 时生效，必要时先切换到记忆模式
+            self.ensure_saved_default_mode(&TransactionOptions::default())?;
 
             let cmd = SafeCommand::new(&self.distro_profile.set_default_command)
                 .and_then(|c| c.arg(entry_id_or_title))
