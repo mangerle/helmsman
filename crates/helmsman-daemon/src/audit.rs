@@ -13,6 +13,10 @@ pub enum AuditAction {
     RollbackSnapshot,
     /// 安装主题压缩包
     InstallTheme,
+    /// 设置条目别名
+    SetAlias,
+    /// 提交自定义引导项
+    ApplyCustomEntries,
 }
 
 impl std::fmt::Display for AuditAction {
@@ -22,6 +26,8 @@ impl std::fmt::Display for AuditAction {
             AuditAction::SetDefaultFast => write!(f, "快速切换默认启动项"),
             AuditAction::RollbackSnapshot => write!(f, "还原历史快照"),
             AuditAction::InstallTheme => write!(f, "安装主题压缩包"),
+            AuditAction::SetAlias => write!(f, "设置条目别名"),
+            AuditAction::ApplyCustomEntries => write!(f, "提交自定义引导项"),
         }
     }
 }

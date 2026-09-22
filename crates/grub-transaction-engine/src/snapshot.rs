@@ -173,3 +173,28 @@ pub fn list_snapshots(backup_base_dir: &Path) -> io::Result<Vec<SnapshotMeta>> {
     snapshots.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
     Ok(snapshots)
 }
+
+/// 按保留上限裁剪历史快照，删除最旧的多余快照目录
+///
+/// # 设计原理
+/// - **实现初衷**：快照随每次配置变更无限增长会占满 `/var/backups`，必须有界保留。
+/// - **核心优势**：保留最近 `max_keep` 份，删除前已按时间降序排序，避免误删最新备份。
+/// - **代价与局限**：不提供按天龄清理；`max_keep` 为 0 时清空全部快照。
+///
+/// # Errors
+/// 备份根目录读取失败或删除快照目录失败时返回 `io::Error`。
+pub fn prune_snapshots(backup_base_dir: &Path, max_keep: usize) -> io::Result<usize> {
+    let mut snapshots = list_snapshots(backup_base_dir)?;
+    if snapshots.len() <= max_keep {
+        return Ok(0);
+    }
+
+    let mut removed = 0usize;
+    for meta in snapshots.drain(max_keep..) {
+        if let Some(dir) = meta.backup_file.parent() {
+            fs::remove_dir_all(dir)?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}

@@ -13,7 +13,9 @@ pub use lock::{
     LockCheckStrategy, LockDescriptor, LockError, PackageManagerType, check_package_manager_locks,
     check_single_lock, default_system_locks,
 };
-pub use snapshot::{SnapshotMeta, create_snapshot, list_snapshots, restore_snapshot};
+pub use snapshot::{
+    SnapshotMeta, create_snapshot, list_snapshots, prune_snapshots, restore_snapshot,
+};
 pub use theme_archive::{
     ArchiveFormat, MAX_ENTRIES_COUNT, MAX_SINGLE_FILE_SIZE, MAX_TOTAL_UNCOMPRESSED_SIZE,
     detect_archive_format, extract_archive_to_dir, find_theme_root_in_dir,

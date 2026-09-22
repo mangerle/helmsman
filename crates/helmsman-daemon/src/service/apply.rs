@@ -3,7 +3,7 @@ use crate::service::apply_support::execute_update_with_rollback;
 use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
 use grub_transaction_engine::{
     atomic_write, check_disk_space, check_package_manager_locks, create_snapshot,
-    generate_unified_diff,
+    generate_unified_diff, prune_snapshots,
 };
 use std::fs;
 use std::path::Path;
@@ -109,6 +109,11 @@ impl GrubService {
             .map_err(|e| DaemonError::SnapshotFailed {
                 reason: e.to_string(),
             })?;
+
+        // 有界保留快照，防止备份目录无限膨胀
+        if let Err(e) = prune_snapshots(&self.backup_dir, 20) {
+            tracing::warn!("裁剪历史快照失败，原因: {}", e);
+        }
 
         if let Err(e) = atomic_write(&self.default_config_path, new_config) {
             return Err(DaemonError::AtomicWriteFailed {

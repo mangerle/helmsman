@@ -1,11 +1,11 @@
 use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
 use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
 use grub_boot_reader::{CustomBootEntry, generate_custom_script, parse_custom_script};
-use grub_transaction_engine::{atomic_write, check_disk_space, create_snapshot};
+use grub_transaction_engine::{atomic_write, check_disk_space, create_snapshot, prune_snapshots};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
 /// 默认的受管自定义脚本路径
@@ -123,6 +123,10 @@ impl CustomManager {
                     .map_err(|e| DaemonError::SnapshotFailed {
                         reason: e.to_string(),
                     })?;
+                // 有界保留快照，防止备份目录无限膨胀
+                if let Err(e) = prune_snapshots(&self.backup_dir, 20) {
+                    tracing::warn!("裁剪历史快照失败，原因: {}", e);
+                }
                 snapshot.id
             } else {
                 "initial_custom_created".to_string()
@@ -171,7 +175,7 @@ impl CustomManager {
         let success = res.as_ref().map(|r| r.success).unwrap_or(false);
         record_audit_event(&AuditEvent {
             caller_uid,
-            action: AuditAction::ApplyChanges,
+            action: AuditAction::ApplyCustomEntries,
             reason: format!("更新自定义条目: {}", reason),
             snapshot_id: res.as_ref().ok().map(|r| r.snapshot_id.clone()),
             success,
@@ -226,6 +230,16 @@ impl CustomManager {
             "成功更新条目别名，条目 ID: '{}' -> 别名: '{}'",
             entry_id, trimmed_alias
         );
+
+        record_audit_event(&AuditEvent {
+            caller_uid: resolve_caller_uid(),
+            action: AuditAction::SetAlias,
+            reason: format!("条目 '{}' 别名更新为 '{}'", entry_id, trimmed_alias),
+            snapshot_id: None,
+            success: true,
+            duration: Duration::ZERO,
+            diff_summary: None,
+        });
         Ok(())
     }
 }
