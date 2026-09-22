@@ -149,9 +149,10 @@ impl HelmsmanDbusAdapter {
     ) -> Result<Vec<SnapshotDto>, HelmsmanDbusError> {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
-        let snapshots = self
-            .service
-            .get_available_snapshots()
+        let service = Arc::clone(&self.service);
+        let snapshots = tokio::task::spawn_blocking(move || service.get_available_snapshots())
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("快照列表任务异常终止: {e}")))?
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         let mut dtos = Vec::with_capacity(snapshots.len());
@@ -176,9 +177,11 @@ impl HelmsmanDbusAdapter {
     ) -> Result<DiffResultDto, HelmsmanDbusError> {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
-        let report = self
-            .service
-            .preview_diff(new_config)
+        let service = Arc::clone(&self.service);
+        let new_config = new_config.to_string();
+        let report = tokio::task::spawn_blocking(move || service.preview_diff(&new_config))
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("差异预览任务异常终止: {e}")))?
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         Ok(DiffResultDto {
@@ -207,9 +210,14 @@ impl HelmsmanDbusAdapter {
             .verify_polkit(header, connection, polkit_actions::ACTION_SET_DEFAULT)
             .await?;
 
-        self.service
-            .set_default_entry_fast_as(entry_id_or_title, caller_uid)
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+        let service = Arc::clone(&self.service);
+        let entry_id_or_title = entry_id_or_title.to_string();
+        tokio::task::spawn_blocking(move || {
+            service.set_default_entry_fast_as(&entry_id_or_title, caller_uid)
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("默认项切换任务异常终止: {e}")))?
+        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
     /// 提交配置修改事务（受 Polkit apply-changes 权限保护）
@@ -231,10 +239,16 @@ impl HelmsmanDbusAdapter {
             .verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
             .await?;
 
-        let result = self
-            .service
-            .apply_changes_as(new_config, reason, &self.options, caller_uid)
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        let service = Arc::clone(&self.service);
+        let options = self.options.clone();
+        let new_config = new_config.to_string();
+        let reason = reason.to_string();
+        let result = tokio::task::spawn_blocking(move || {
+            service.apply_changes_as(&new_config, &reason, &options, caller_uid)
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("配置提交任务异常终止: {e}")))?
+        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         Ok(ApplyResultDto {
             success: result.success,
@@ -262,9 +276,14 @@ impl HelmsmanDbusAdapter {
             .verify_polkit(header, connection, polkit_actions::ACTION_ROLLBACK)
             .await?;
 
-        self.service
-            .rollback_to_snapshot_as(snapshot_id, caller_uid)
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+        let service = Arc::clone(&self.service);
+        let snapshot_id = snapshot_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            service.rollback_to_snapshot_as(&snapshot_id, caller_uid)
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("快照回滚任务异常终止: {e}")))?
+        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
     /// 读取受管的自定义引导项列表 (/etc/grub.d/41_helmsman_custom)
@@ -275,8 +294,10 @@ impl HelmsmanDbusAdapter {
     ) -> Result<Vec<CustomBootEntry>, HelmsmanDbusError> {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
-        self.custom_manager
-            .load_custom_entries()
+        let custom_manager = Arc::clone(&self.custom_manager);
+        tokio::task::spawn_blocking(move || custom_manager.load_custom_entries())
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("自定义条目读取任务异常终止: {e}")))?
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
@@ -293,10 +314,16 @@ impl HelmsmanDbusAdapter {
             .verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
             .await?;
 
-        let result = self
-            .custom_manager
-            .save_custom_entries_as(&self.service, &entries, reason, &self.options, caller_uid)
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        let custom_manager = Arc::clone(&self.custom_manager);
+        let service = Arc::clone(&self.service);
+        let options = self.options.clone();
+        let reason = reason.to_string();
+        let result = tokio::task::spawn_blocking(move || {
+            custom_manager.save_custom_entries_as(&service, &entries, &reason, &options, caller_uid)
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("自定义条目提交任务异常终止: {e}")))?
+        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         Ok(ApplyResultDto {
             success: result.success,
@@ -314,7 +341,11 @@ impl HelmsmanDbusAdapter {
     ) -> Result<HashMap<String, String>, HelmsmanDbusError> {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
-        Ok(self.custom_manager.load_aliases())
+        let custom_manager = Arc::clone(&self.custom_manager);
+        let aliases = tokio::task::spawn_blocking(move || custom_manager.load_aliases())
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("别名读取任务异常终止: {e}")))?;
+        Ok(aliases)
     }
 
     /// 设置条目别名映射（受 Polkit set-alias 权限保护）
@@ -329,8 +360,12 @@ impl HelmsmanDbusAdapter {
         self.verify_polkit(header, connection, polkit_actions::ACTION_SET_ALIAS)
             .await?;
 
-        self.custom_manager
-            .set_alias(entry_id, alias)
+        let custom_manager = Arc::clone(&self.custom_manager);
+        let entry_id = entry_id.to_string();
+        let alias = alias.to_string();
+        tokio::task::spawn_blocking(move || custom_manager.set_alias(&entry_id, &alias))
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("别名写入任务异常终止: {e}")))?
             .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
     }
 
@@ -356,13 +391,21 @@ impl HelmsmanDbusAdapter {
         let opt_name = if theme_name.trim().is_empty() {
             None
         } else {
-            Some(theme_name.trim())
+            Some(theme_name.trim().to_string())
         };
 
-        let installed_path = self
-            .service
-            .install_theme_archive_as(std::path::Path::new(archive_path), opt_name, caller_uid)
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        let service = Arc::clone(&self.service);
+        let archive_path = archive_path.to_string();
+        let installed_path = tokio::task::spawn_blocking(move || {
+            service.install_theme_archive_as(
+                std::path::Path::new(&archive_path),
+                opt_name.as_deref(),
+                caller_uid,
+            )
+        })
+        .await
+        .map_err(|e| HelmsmanDbusError::Failed(format!("主题安装任务异常终止: {e}")))?
+        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
 
         Ok(installed_path.to_string_lossy().into_owned())
     }

@@ -62,6 +62,9 @@ const TEST_ALLOWED_PROGRAMS: &[&str] = &[
 /// 严禁出现的危险控制字符集合（防止 shell 注入）
 const DANGEROUS_CHARS: &[char] = &['\n', '\r', ';', '&', '|', '`', '$', '(', ')', '<', '>'];
 
+/// 默认命令执行超时秒数：防止 grub 工具假死卡住守护进程
+pub const DEFAULT_COMMAND_TIMEOUT_SECS: u64 = 30;
+
 /// 受白名单严格限制的安全命令构建器
 ///
 /// # 设计原理
@@ -127,10 +130,7 @@ impl SafeCommand {
     /// # Errors
     /// 当操作系统底层派生子进程失败时返回 `io::Error`。
     pub fn output(&self) -> io::Result<Output> {
-        debug!("安全执行特权白名单命令: {} {:?}", self.program, self.args);
-        let mut cmd = Command::new(&self.program);
-        cmd.args(&self.args);
-        cmd.output()
+        self.output_with_timeout(std::time::Duration::from_secs(DEFAULT_COMMAND_TIMEOUT_SECS))
     }
 
     /// 带设限超时执行命令，若超时则主动终止并收割子进程，杜绝僵尸进程残留
