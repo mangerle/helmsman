@@ -87,6 +87,18 @@ pub enum CustomEntryError {
         /// 拒绝原因
         reason: String,
     },
+    /// 条目列表存在冲突（ID 或标题重复）
+    #[error("条目列表存在冲突，原因: {reason}")]
+    Conflict {
+        /// 冲突原因
+        reason: String,
+    },
+    /// 生成脚本结构非法
+    #[error("生成的自定义脚本结构非法，原因: {reason}")]
+    InvalidScriptStructure {
+        /// 拒绝原因
+        reason: String,
+    },
 }
 
 /// 单个自定义引导条目强类型模型
@@ -535,15 +547,104 @@ impl CustomBootEntry {
 /// 将自定义引导条目列表格式化为完整的 `/etc/grub.d/41_helmsman_custom` 脚本内容
 ///
 /// # Errors
-/// 任一条目字段未通过安全校验时返回对应的 [`CustomEntryError`]，拒绝生成不完整脚本。
+/// 任一条目字段未通过安全校验，或列表存在 ID/标题冲突时返回对应的 [`CustomEntryError`]。
 pub fn generate_custom_script(entries: &[CustomBootEntry]) -> Result<String, CustomEntryError> {
+    validate_entry_list(entries)?;
     let mut script = String::from(HELMSMAN_CUSTOM_HEADER);
     for entry in entries {
         script.push('\n');
         script.push_str(&entry.try_format_entry()?);
         script.push('\n');
     }
+    validate_custom_script_structure(&script)?;
     Ok(script)
+}
+
+/// 校验条目列表级冲突（ID 重复、标题重复）
+///
+/// # 设计原理
+/// - **实现初衷**：ID 重复会导致别名映射与禁用开关互相覆盖；标题重复会让
+///   `GRUB_DEFAULT` 按标题解析时指向不确定条目。
+/// - **核心优势**：在生成脚本前整表拒绝，避免写出半合法配置。
+///
+/// # Errors
+/// 当存在重复 ID 或重复标题时返回 [`CustomEntryError::Conflict`]。
+pub fn validate_entry_list(entries: &[CustomBootEntry]) -> Result<(), CustomEntryError> {
+    let mut seen_ids: std::collections::HashSet<&str> =
+        std::collections::HashSet::with_capacity(entries.len());
+    let mut seen_titles: std::collections::HashSet<&str> =
+        std::collections::HashSet::with_capacity(entries.len());
+
+    for entry in entries {
+        entry.validate()?;
+        if !seen_ids.insert(entry.id.as_str()) {
+            return Err(CustomEntryError::Conflict {
+                reason: format!("条目 ID '{}' 重复", entry.id),
+            });
+        }
+        if !seen_titles.insert(entry.title.as_str()) {
+            return Err(CustomEntryError::Conflict {
+                reason: format!(
+                    "条目标题 '{}' 重复，将导致默认项按标题解析不确定",
+                    entry.title
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// 校验生成脚本的结构完整性（头部、花括号配对、menuentry 数量）
+///
+/// # Errors
+/// 当头部缺失、花括号不配对或启用条目缺少 menuentry 时返回 [`CustomEntryError::InvalidScriptStructure`]。
+pub fn validate_custom_script_structure(script: &str) -> Result<(), CustomEntryError> {
+    if !script.starts_with("#!/bin/sh") {
+        return Err(CustomEntryError::InvalidScriptStructure {
+            reason: "缺少 #!/bin/sh 受管脚本头".to_string(),
+        });
+    }
+
+    let mut depth = 0i32;
+    for ch in script.chars() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth < 0 {
+                    return Err(CustomEntryError::InvalidScriptStructure {
+                        reason: "花括号不配对，存在提前闭合的 menuentry".to_string(),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    if depth != 0 {
+        return Err(CustomEntryError::InvalidScriptStructure {
+            reason: "花括号不配对，存在未闭合的 menuentry".to_string(),
+        });
+    }
+
+    // 启用条目必须生成可见的 menuentry 行（禁用条目会被注释）
+    let menuentry_count = script
+        .lines()
+        .filter(|l| l.trim_start().starts_with("menuentry "))
+        .count();
+    let enabled_meta_count = script
+        .lines()
+        .filter(|l| l.contains("[helmsman-meta ") && l.contains("enabled=\"true\""))
+        .count();
+    if menuentry_count != enabled_meta_count {
+        return Err(CustomEntryError::InvalidScriptStructure {
+            reason: format!(
+                "启用条目数 ({}) 与 menuentry 数 ({}) 不一致",
+                enabled_meta_count, menuentry_count
+            ),
+        });
+    }
+
+    Ok(())
 }
 
 /// 解析 `/etc/grub.d/41_helmsman_custom` 脚本为结构化自定义引导项列表
@@ -832,6 +933,51 @@ mod tests {
         assert!(matches!(
             entry.validate(),
             Err(CustomEntryError::InvalidCmdline { .. })
+        ));
+    }
+
+    #[test]
+    fn test_validate_entry_list_conflicts() {
+        let a = CustomBootEntry::new_iso_boot("id_a", "标题 A", "/iso/a.iso", "uuid-a", "");
+        let mut dup_id = a.clone();
+        dup_id.title = "标题 B".to_string();
+        assert!(matches!(
+            validate_entry_list(&[a.clone(), dup_id]),
+            Err(CustomEntryError::Conflict { .. })
+        ));
+
+        let mut dup_title = a.clone();
+        dup_title.id = "id_b".to_string();
+        assert!(matches!(
+            validate_entry_list(&[a, dup_title]),
+            Err(CustomEntryError::Conflict { .. })
+        ));
+    }
+
+    #[test]
+    fn test_generate_script_structure_validation() {
+        let entry = CustomBootEntry::new_iso_boot("iso_1", "Live", "/iso/a.iso", "uuid-a", "");
+        let mut disabled = entry.clone();
+        disabled.id = "iso_2".to_string();
+        disabled.title = "Live 禁用".to_string();
+        disabled.enabled = false;
+
+        let script = generate_custom_script(&[entry, disabled]).unwrap();
+        assert!(validate_custom_script_structure(&script).is_ok());
+        // 禁用条目被注释后不应计入 menuentry
+        assert_eq!(
+            script
+                .lines()
+                .filter(|l| l.trim_start().starts_with("menuentry "))
+                .count(),
+            1
+        );
+
+        // 人为破坏结构应被拒绝
+        let broken = script.replace("{\n", "\n");
+        assert!(matches!(
+            validate_custom_script_structure(&broken),
+            Err(CustomEntryError::InvalidScriptStructure { .. })
         ));
     }
 }

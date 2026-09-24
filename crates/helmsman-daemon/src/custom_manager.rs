@@ -1,7 +1,9 @@
 use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
 use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
 use grub_boot_reader::{CustomBootEntry, generate_custom_script, parse_custom_script};
-use grub_transaction_engine::{atomic_write, check_disk_space, create_snapshot, prune_snapshots};
+use grub_transaction_engine::{
+    atomic_write, check_disk_space, create_snapshot, prune_snapshots, restore_snapshot,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -89,8 +91,11 @@ impl CustomManager {
 
     /// 以显式调用方 UID 保存自定义引导项列表
     ///
+    /// 流程：整表冲突校验 → 生成脚本并做结构校验 → 快照 → 原子写入 → 触发引导更新；
+    /// 任一后置步骤失败时自动将自定义脚本回滚至写入前状态。
+    ///
     /// # Errors
-    /// 当目录创建、快照、原子写入或引导更新失败时返回对应的 `DaemonError`。
+    /// 当条目冲突/非法、快照、原子写入或引导更新失败时返回对应的 `DaemonError`。
     pub fn save_custom_entries_as(
         &self,
         service: &GrubService,
@@ -100,6 +105,7 @@ impl CustomManager {
         caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
         let start_time = Instant::now();
+        // 冲突检测 + 字段校验 + 脚本结构校验，任一失败均不落盘
         let new_script_content =
             generate_custom_script(entries).map_err(|e| DaemonError::CustomEntryInvalid {
                 reason: e.to_string(),
@@ -117,7 +123,8 @@ impl CustomManager {
             check_disk_space(&self.custom_script_path, 10 * 1024 * 1024)
                 .map_err(DaemonError::DiskSpaceInsufficient)?;
 
-            // 若已有文件则创建快照
+            // 若已有文件则创建快照，失败或更新失败时用于回滚自定义脚本本身
+            let mut script_snapshot = None;
             let snapshot_id = if self.custom_script_path.exists() {
                 let snapshot = create_snapshot(&self.custom_script_path, &self.backup_dir, reason)
                     .map_err(|e| DaemonError::SnapshotFailed {
@@ -127,17 +134,19 @@ impl CustomManager {
                 if let Err(e) = prune_snapshots(&self.backup_dir, 20) {
                     tracing::warn!("裁剪历史快照失败，原因: {}", e);
                 }
-                snapshot.id
+                let id = snapshot.id.clone();
+                script_snapshot = Some(snapshot);
+                id
             } else {
                 "initial_custom_created".to_string()
             };
 
             // 原子替换写入
-            atomic_write(&self.custom_script_path, &new_script_content).map_err(|e| {
-                DaemonError::AtomicWriteFailed {
+            if let Err(e) = atomic_write(&self.custom_script_path, &new_script_content) {
+                return Err(DaemonError::AtomicWriteFailed {
                     reason: e.to_string(),
-                }
-            })?;
+                });
+            }
 
             // 在 Unix 平台下确保可执行权限 (0755)
             #[cfg(unix)]
@@ -168,8 +177,29 @@ impl CustomManager {
                 reason,
                 options,
                 caller_uid,
-            )?;
-            Ok(update_res)
+            );
+
+            // 引导更新失败时回滚自定义脚本，避免磁盘脚本与生成的 grub.cfg 不一致
+            match update_res {
+                Ok(result) => Ok(result),
+                Err(err) => {
+                    if let Some(ref snap) = script_snapshot
+                        && let Err(restore_err) = restore_snapshot(snap)
+                    {
+                        tracing::error!(
+                            "自定义脚本回滚失败，路径: {}，原因: {}",
+                            self.custom_script_path.display(),
+                            restore_err
+                        );
+                    } else {
+                        tracing::warn!(
+                            "引导更新失败，自定义脚本已回滚至写入前状态，路径: {}",
+                            self.custom_script_path.display()
+                        );
+                    }
+                    Err(err)
+                }
+            }
         })();
 
         let success = res.as_ref().map(|r| r.success).unwrap_or(false);
@@ -323,5 +353,95 @@ mod tests {
         manager.set_alias("gnulinux-6.8", "").unwrap();
         let aliases_cleared = manager.load_aliases();
         assert!(!aliases_cleared.contains_key("gnulinux-6.8"));
+    }
+
+    #[test]
+    fn test_custom_manager_rejects_conflicts() {
+        let (_base, manager, service) = get_custom_test_env("conflict");
+
+        let a = CustomBootEntry::new_iso_boot("dup_id", "条目 A", "/boot/iso/a.iso", "UUID-A", "");
+        let b = CustomBootEntry::new_iso_boot("dup_id", "条目 B", "/boot/iso/b.iso", "UUID-B", "");
+        let options = TransactionOptions {
+            skip_command_execution: true,
+            ..Default::default()
+        };
+        let err = manager
+            .save_custom_entries(&service, &[a, b], "ID 冲突", &options)
+            .unwrap_err();
+        assert!(matches!(err, DaemonError::CustomEntryInvalid { .. }));
+
+        // 标题冲突同样拒绝
+        let c = CustomBootEntry::new_iso_boot("id_c", "同名", "/boot/iso/c.iso", "UUID-C", "");
+        let d = CustomBootEntry::new_iso_boot("id_d", "同名", "/boot/iso/d.iso", "UUID-D", "");
+        let err2 = manager
+            .save_custom_entries(&service, &[c, d], "标题冲突", &options)
+            .unwrap_err();
+        assert!(matches!(err2, DaemonError::CustomEntryInvalid { .. }));
+
+        // 冲突拒绝时不得落盘
+        assert!(manager.load_custom_entries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_custom_manager_rollback_on_update_failure() {
+        let (_base, manager, service) = get_custom_test_env("rollback_custom");
+
+        let options = TransactionOptions {
+            skip_command_execution: true,
+            ..Default::default()
+        };
+        let first =
+            CustomBootEntry::new_iso_boot("iso_ok", "稳定条目", "/boot/iso/ok.iso", "UUID-OK", "");
+        manager
+            .save_custom_entries(&service, &[first], "首次写入", &options)
+            .unwrap();
+        let before = fs::read_to_string(&manager.custom_script_path).unwrap();
+
+        // 构造会失败的更新：update 命令不在白名单或执行失败，且不跳过命令执行
+        let failing_profile = DistroProfile {
+            // 未启用 test-support 时会被安全白名单拦截；启用后也会以非零退出失败
+            update_command: "false".to_string(),
+            ..service.distro_profile.clone()
+        };
+        let failing_service = GrubService::new_with_paths(
+            service.default_config_path.clone(),
+            service.backup_dir.clone(),
+            failing_profile,
+        );
+
+        let second = CustomBootEntry::new_iso_boot(
+            "iso_fail",
+            "将回滚条目",
+            "/boot/iso/fail.iso",
+            "UUID-FAIL",
+            "",
+        );
+        let options_run = TransactionOptions {
+            skip_command_execution: false,
+            skip_syntax_check: true,
+            ..Default::default()
+        };
+        let err = manager
+            .save_custom_entries(
+                &failing_service,
+                &[second],
+                "更新失败应整体回滚",
+                &options_run,
+            )
+            .unwrap_err();
+        // 白名单拦截或命令失败均应走回滚路径
+        assert!(
+            matches!(
+                err,
+                DaemonError::CommandLaunchFailed { .. } | DaemonError::SecurityCheckFailed(_)
+            ),
+            "实际错误: {:?}",
+            err
+        );
+
+        // 自定义脚本必须回滚到首次写入内容
+        let after = fs::read_to_string(&manager.custom_script_path).unwrap();
+        assert_eq!(before, after);
+        assert!(!after.contains("将回滚条目"));
     }
 }

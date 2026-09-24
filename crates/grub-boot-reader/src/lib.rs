@@ -5,7 +5,7 @@ pub mod theme;
 
 pub use custom::{
     CustomBootEntry, CustomEntryError, HELMSMAN_CUSTOM_HEADER, entry_types, generate_custom_script,
-    parse_custom_script,
+    parse_custom_script, validate_custom_script_structure, validate_entry_list,
 };
 pub use model::{BootEntry, MenuNode};
 pub use parser::parse_grub_cfg;
