@@ -96,6 +96,9 @@ impl From<DaemonError> for HelmsmanDbusError {
             DaemonError::CustomEntryInvalid { reason } => HelmsmanDbusError::CustomEntryInvalid(
                 format!("自定义引导项校验失败，原因: {reason}"),
             ),
+            DaemonError::InvalidAlias { entry_id, reason } => HelmsmanDbusError::InvalidArgs(
+                format!("条目显示别名非法，条目: '{entry_id}'，原因: {reason}"),
+            ),
         }
     }
 }

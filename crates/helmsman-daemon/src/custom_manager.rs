@@ -217,6 +217,9 @@ impl CustomManager {
     }
 
     /// 读取条目别名映射表
+    ///
+    /// # 语义说明
+    /// 别名是**界面显示名**，不会写入 `grub.cfg`，也不改变开机菜单 `menuentry` 标题。
     pub fn load_aliases(&self) -> HashMap<String, String> {
         if !self.aliases_path.exists() {
             return HashMap::new();
@@ -231,7 +234,17 @@ impl CustomManager {
     }
 
     /// 保存条目别名映射
+    ///
+    /// # 语义说明
+    /// - 仅持久化到 `/etc/helmsman/aliases.json`，供界面展示；
+    /// - **不会**修改 `/etc/default/grub`、`/etc/grub.d/*` 或 `grub.cfg`；
+    /// - 传入空别名表示清除映射、回退原始标题。
+    ///
+    /// # Errors
+    /// 当条目 ID 或显示名含非法字符、超长时返回 [`DaemonError::InvalidAlias`]。
     pub fn set_alias(&self, entry_id: &str, alias: &str) -> Result<(), DaemonError> {
+        validate_alias_binding(entry_id, alias)?;
+
         let mut aliases = self.load_aliases();
         let trimmed_alias = alias.trim();
 
@@ -257,14 +270,14 @@ impl CustomManager {
         })?;
 
         info!(
-            "成功更新条目别名，条目 ID: '{}' -> 别名: '{}'",
+            "成功更新条目显示别名（仅界面展示，不改写 grub.cfg），条目 ID: '{}' -> 别名: '{}'",
             entry_id, trimmed_alias
         );
 
         record_audit_event(&AuditEvent {
             caller_uid: resolve_caller_uid(),
             action: AuditAction::SetAlias,
-            reason: format!("条目 '{}' 别名更新为 '{}'", entry_id, trimmed_alias),
+            reason: format!("条目 '{}' 显示别名更新为 '{}'", entry_id, trimmed_alias),
             snapshot_id: None,
             success: true,
             duration: Duration::ZERO,
@@ -272,6 +285,45 @@ impl CustomManager {
         });
         Ok(())
     }
+}
+
+/// 校验别名绑定（条目 ID + 显示名）
+///
+/// # Errors
+/// 当 ID 为空/超长/含控制字符，或显示名含控制字符/超长时返回 [`DaemonError::InvalidAlias`]。
+fn validate_alias_binding(entry_id: &str, alias: &str) -> Result<(), DaemonError> {
+    let id = entry_id.trim();
+    if id.is_empty() || id.len() > 128 {
+        return Err(DaemonError::InvalidAlias {
+            entry_id: entry_id.to_string(),
+            reason: "条目标识长度必须为 1-128 字符".to_string(),
+        });
+    }
+    if id.chars().any(|c| c.is_control()) {
+        return Err(DaemonError::InvalidAlias {
+            entry_id: entry_id.to_string(),
+            reason: "条目标识禁止包含控制字符".to_string(),
+        });
+    }
+
+    let name = alias.trim();
+    // 空别名表示清除，合法
+    if name.is_empty() {
+        return Ok(());
+    }
+    if name.len() > 128 {
+        return Err(DaemonError::InvalidAlias {
+            entry_id: entry_id.to_string(),
+            reason: "显示别名不得超过 128 字符".to_string(),
+        });
+    }
+    if name.chars().any(|c| c.is_control()) {
+        return Err(DaemonError::InvalidAlias {
+            entry_id: entry_id.to_string(),
+            reason: "显示别名禁止包含换行等控制字符".to_string(),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -353,6 +405,39 @@ mod tests {
         manager.set_alias("gnulinux-6.8", "").unwrap();
         let aliases_cleared = manager.load_aliases();
         assert!(!aliases_cleared.contains_key("gnulinux-6.8"));
+    }
+
+    #[test]
+    fn test_alias_is_display_only_and_validated() {
+        use grub_boot_reader::generate_custom_script;
+
+        let (_base, manager, _service) = get_custom_test_env("alias_display_only");
+
+        let entry =
+            CustomBootEntry::new_iso_boot("iso_alias", "原始标题", "/boot/iso/a.iso", "UUID-A", "");
+        let script_before = generate_custom_script(std::slice::from_ref(&entry)).unwrap();
+
+        // 设置界面显示别名后，生成的 grub 脚本标题不得变化
+        manager.set_alias("iso_alias", "短名").unwrap();
+        let script_after = generate_custom_script(std::slice::from_ref(&entry)).unwrap();
+        assert_eq!(script_before, script_after);
+        assert!(script_after.contains("menuentry '原始标题'"));
+        assert!(!script_after.contains("短名"));
+
+        // 非法别名应被拒绝
+        assert!(matches!(
+            manager.set_alias("iso_alias", "bad\nname"),
+            Err(DaemonError::InvalidAlias { .. })
+        ));
+        assert!(matches!(
+            manager.set_alias("", "合法名"),
+            Err(DaemonError::InvalidAlias { .. })
+        ));
+        let long = "长".repeat(129);
+        assert!(matches!(
+            manager.set_alias("iso_alias", &long),
+            Err(DaemonError::InvalidAlias { .. })
+        ));
     }
 
     #[test]

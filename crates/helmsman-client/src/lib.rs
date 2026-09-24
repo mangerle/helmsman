@@ -14,5 +14,5 @@ pub use actions::polkit_actions;
 pub use proxy::{HelmsmanApiProxy, HelmsmanApiProxyBlocking};
 pub use types::{
     ApplyResultDto, DBUS_INTERFACE_V1, DBUS_OBJECT_PATH, DBUS_SERVICE_NAME, DiffResultDto,
-    SnapshotDto, SystemStatusDto, ThemeInfoDto,
+    EntryAliasDto, SnapshotDto, SystemStatusDto, ThemeInfoDto,
 };

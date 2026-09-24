@@ -65,9 +65,16 @@ pub trait HelmsmanApi {
     ) -> zbus::Result<ApplyResultDto>;
 
     /// 获取条目别名映射
+    ///
+    /// 别名仅用于界面展示，不会改写 grub.cfg 中的 menuentry 标题。
     fn get_entry_aliases(&self) -> zbus::Result<HashMap<String, String>>;
 
-    /// 设置条目别名
+    /// 设置条目显示别名
+    ///
+    /// # 语义契约
+    /// 仅写入别名注册表供界面展示；**不会**修改开机菜单标题。
+    /// 若需改开机标题，请使用自定义引导项（apply_custom_entries）。
+    /// 传入空别名表示清除。
     fn set_entry_alias(&self, entry_id: &str, alias: &str) -> zbus::Result<()>;
 
     /// 安装主题压缩包

@@ -89,4 +89,12 @@ pub enum DaemonError {
         /// 校验失败原因
         reason: String,
     },
+    /// 条目显示别名非法
+    #[error("条目显示别名非法，条目: '{entry_id}'，原因: {reason}")]
+    InvalidAlias {
+        /// 关联条目标识
+        entry_id: String,
+        /// 拒绝原因
+        reason: String,
+    },
 }

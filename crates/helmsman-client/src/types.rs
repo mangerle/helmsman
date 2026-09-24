@@ -88,3 +88,25 @@ pub struct ThemeInfoDto {
     /// 是否包含 theme.txt
     pub has_descriptor: bool,
 }
+
+/// 条目友好显示别名 DTO
+///
+/// # 语义契约（重要）
+/// - **别名只影响 Helmsman 及其客户端的界面展示**，用于给冗长的内核标题起短名。
+/// - **绝不会改写** `/boot/grub/grub.cfg` 中的 `menuentry` 真实标题，
+///   也不会触碰发行版 `/etc/grub.d/10_linux` 等官方脚本。
+/// - 若确实需要修改**开机菜单**上的标题，必须通过受管自定义引导项
+///   （`/etc/grub.d/41_helmsman_custom`）覆盖生成对应条目，禁止直接编辑 `grub.cfg`。
+///
+/// # 设计原理
+/// - **实现初衷**：把「界面显示名」与「开机菜单标题」两个易混淆概念在契约层拆开，
+///   避免调用方误以为 set_alias 能改 GRUB 菜单。
+/// - **核心优势**：内核升级后别名按稳定 ID/原题绑定，不依赖会漂移的菜单序号。
+/// - **代价与局限**：别名不会出现在开机菜单上；跨机器导出配置时别名需单独迁移。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct EntryAliasDto {
+    /// 稳定条目标识（优先 menuentry id，其次原始标题）
+    pub entry_id: String,
+    /// 界面显示名（空字符串表示清除别名、回退为原始标题）
+    pub display_name: String,
+}
