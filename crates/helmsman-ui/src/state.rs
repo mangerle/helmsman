@@ -2,10 +2,12 @@ use crate::entry_view::{BootEntryItem, flatten_boot_entries_with_options};
 use crate::theme::{ColorPalette, FontScale, SystemColorScheme, ThemeMode};
 use grub_boot_reader::{BootEntry, CustomBootEntry, MenuNode, parse_grub_cfg};
 use grub_config_parser::{
-    BootKeyError, DefaultEntry, GrubConfigFile, TimeoutSeconds, TimeoutStyle,
-    default_entry_from_index, default_entry_from_title, get_default_entry, get_timeout,
-    get_timeout_style, parse_grub_config, set_default_entry as cfg_set_default_entry,
-    set_timeout as cfg_set_timeout, set_timeout_style as cfg_set_timeout_style,
+    BootKeyError, CmdlineError, DefaultEntry, GrubConfigFile, KernelCmdline, TimeoutSeconds,
+    TimeoutStyle, default_entry_from_index, default_entry_from_title, get_cmdline_default,
+    get_cmdline_linux, get_default_entry, get_timeout, get_timeout_style, parse_grub_config,
+    set_cmdline_default as cfg_set_cmdline_default, set_cmdline_linux as cfg_set_cmdline_linux,
+    set_default_entry as cfg_set_default_entry, set_timeout as cfg_set_timeout,
+    set_timeout_style as cfg_set_timeout_style,
 };
 use grub_transaction_engine::{DiffReport, generate_unified_diff};
 use std::collections::HashMap;
@@ -244,8 +246,14 @@ impl AppState {
     }
 
     /// 设置基础内核参数（GRUB_CMDLINE_LINUX）
-    pub fn set_cmdline_linux(&mut self, cmdline: &str) {
-        self.draft_config.set("GRUB_CMDLINE_LINUX", cmdline);
+    ///
+    /// 写回前自动去重并校验令牌，保留键原有引号与行尾注释。
+    ///
+    /// # Errors
+    /// 当参数串含非法令牌时返回 [`CmdlineError`]。
+    pub fn set_cmdline_linux(&mut self, cmdline: &str) -> Result<(), CmdlineError> {
+        let parsed = KernelCmdline::parse(cmdline)?;
+        cfg_set_cmdline_linux(&mut self.draft_config, &parsed)
     }
 
     /// 获取基础内核参数
@@ -253,9 +261,23 @@ impl AppState {
         self.draft_config.get("GRUB_CMDLINE_LINUX").unwrap_or("")
     }
 
-    /// 设置全局内核参数
-    pub fn set_cmdline_default(&mut self, cmdline: &str) {
-        self.draft_config.set("GRUB_CMDLINE_LINUX_DEFAULT", cmdline);
+    /// 获取基础内核参数类型化视图
+    ///
+    /// # Errors
+    /// 当已配置值非法时返回 [`CmdlineError`]。
+    pub fn get_cmdline_linux_typed(&self) -> Result<KernelCmdline, CmdlineError> {
+        get_cmdline_linux(&self.draft_config)
+    }
+
+    /// 设置全局内核参数（GRUB_CMDLINE_LINUX_DEFAULT）
+    ///
+    /// 写回前自动去重并校验令牌，保留键原有引号与行尾注释。
+    ///
+    /// # Errors
+    /// 当参数串含非法令牌时返回 [`CmdlineError`]。
+    pub fn set_cmdline_default(&mut self, cmdline: &str) -> Result<(), CmdlineError> {
+        let parsed = KernelCmdline::parse(cmdline)?;
+        cfg_set_cmdline_default(&mut self.draft_config, &parsed)
     }
 
     /// 获取全局内核参数
@@ -263,6 +285,32 @@ impl AppState {
         self.draft_config
             .get("GRUB_CMDLINE_LINUX_DEFAULT")
             .unwrap_or("")
+    }
+
+    /// 获取全局内核参数类型化视图
+    ///
+    /// # Errors
+    /// 当已配置值非法时返回 [`CmdlineError`]。
+    pub fn get_cmdline_default_typed(&self) -> Result<KernelCmdline, CmdlineError> {
+        get_cmdline_default(&self.draft_config)
+    }
+
+    /// 启停全局内核参数中的常见开关（quiet / splash / nomodeset 等）
+    ///
+    /// # Errors
+    /// 当已配置值非法或开关名非法时返回 [`CmdlineError`]。
+    pub fn set_cmdline_default_flag(
+        &mut self,
+        flag: &str,
+        enabled: bool,
+    ) -> Result<(), CmdlineError> {
+        let mut cmdline = get_cmdline_default(&self.draft_config)?;
+        if enabled {
+            cmdline.enable_flag(flag)?;
+        } else {
+            cmdline.disable_flag(flag);
+        }
+        cfg_set_cmdline_default(&mut self.draft_config, &cmdline)
     }
 
     /// 切换 os-prober 探测

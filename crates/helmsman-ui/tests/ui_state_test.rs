@@ -50,8 +50,10 @@ fn test_ui_state_lifecycle() {
         Some("Windows Boot Manager (on /dev/nvme0n1p1)")
     );
 
-    // 3. 用户追加内核参数
-    state.set_cmdline_default("quiet splash nomodeset");
+    // 3. 用户追加内核参数（自动去重）
+    state
+        .set_cmdline_default("quiet splash nomodeset quiet")
+        .expect("参数串应合法");
     assert_eq!(state.get_cmdline_default(), "quiet splash nomodeset");
 
     // 4. 验证 Diff 计算
@@ -146,4 +148,32 @@ fn test_default_entry_invalid_rejected() {
     assert!(state.set_default_entry("bad\nline").is_err());
     // 非法值不得落入草稿
     assert_eq!(state.get_default_entry(), Some("0"));
+}
+
+#[test]
+fn test_kernel_cmdline_dedup_and_flags() {
+    use grub_config_parser::well_known_flags;
+
+    let mut state = AppState::new_from_content(SAMPLE_DEFAULT_GRUB, SAMPLE_GRUB_CFG);
+    assert_eq!(state.get_cmdline_default(), "quiet splash");
+
+    // 重复 quiet 应被去重
+    state
+        .set_cmdline_default("quiet splash quiet nomodeset")
+        .unwrap();
+    assert_eq!(state.get_cmdline_default(), "quiet splash nomodeset");
+
+    // 开关启停
+    state
+        .set_cmdline_default_flag(well_known_flags::SPLASH, false)
+        .unwrap();
+    assert_eq!(state.get_cmdline_default(), "quiet nomodeset");
+    state
+        .set_cmdline_default_flag(well_known_flags::SPLASH, true)
+        .unwrap();
+    assert_eq!(state.get_cmdline_default(), "quiet nomodeset splash");
+
+    // 危险令牌拒绝且不污染草稿
+    assert!(state.set_cmdline_default("quiet; evil").is_err());
+    assert_eq!(state.get_cmdline_default(), "quiet nomodeset splash");
 }
