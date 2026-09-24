@@ -120,3 +120,87 @@ fn test_all_commands_are_absolute_paths() {
         }
     }
 }
+
+const OPENSUSE_OS_RELEASE: &str = r#"NAME="openSUSE Tumbleweed"
+ID="opensuse-tumbleweed"
+ID_LIKE="opensuse suse"
+VERSION_ID="20240101"
+PRETTY_NAME="openSUSE Tumbleweed"
+"#;
+
+const MANJARO_OS_RELEASE: &str = r#"NAME="Manjaro Linux"
+PRETTY_NAME="Manjaro Linux"
+ID=manjaro
+ID_LIKE=arch
+BUILD_ID=rolling
+"#;
+
+const ROCKY_OS_RELEASE: &str = r#"NAME="Rocky Linux"
+VERSION="9.3 (Blue Onyx)"
+ID="rocky"
+ID_LIKE="rhel centos fedora"
+VERSION_ID="9.3"
+PRETTY_NAME="Rocky Linux 9.3 (Blue Onyx)"
+"#;
+
+#[test]
+fn test_opensuse_adapter() {
+    let profile = DistroProfile::parse_from_os_release(OPENSUSE_OS_RELEASE, FirmwareType::Uefi);
+    assert_eq!(profile.family, DistroFamily::OpenSuse);
+    assert!(profile.update_command.starts_with('/'));
+    assert!(
+        profile.update_command.contains("grub2-mkconfig")
+            || profile.update_command.contains("grub-mkconfig")
+    );
+    assert_eq!(profile.config_path, "/boot/grub2/grub.cfg");
+    assert_eq!(profile.grubenv_path, "/boot/grub2/grubenv");
+    assert_eq!(profile.package_manager_label(), "zypper");
+    assert!(!profile.package_manager_lock_paths().is_empty());
+}
+
+#[test]
+fn test_manjaro_adapter_maps_to_arch() {
+    let profile = DistroProfile::parse_from_os_release(MANJARO_OS_RELEASE, FirmwareType::Uefi);
+    assert_eq!(profile.family, DistroFamily::Arch);
+    assert!(profile.update_command.contains("grub-mkconfig"));
+    assert_eq!(profile.config_path, "/boot/grub/grub.cfg");
+    assert_eq!(profile.package_manager_label(), "pacman");
+}
+
+#[test]
+fn test_rocky_adapter_maps_to_fedora_rhel() {
+    let profile = DistroProfile::parse_from_os_release(ROCKY_OS_RELEASE, FirmwareType::Uefi);
+    assert_eq!(profile.family, DistroFamily::FedoraRhel);
+    assert!(
+        profile.update_command.contains("grub2-mkconfig")
+            || profile.update_command.contains("grub-mkconfig")
+    );
+    assert_eq!(profile.config_path, "/boot/grub2/grub.cfg");
+    assert_eq!(profile.package_manager_label(), "rpm/dnf");
+}
+
+#[test]
+fn test_package_manager_lock_paths_by_family() {
+    let ubuntu = DistroProfile::parse_from_os_release(UBUNTU_OS_RELEASE, FirmwareType::Uefi);
+    assert!(
+        ubuntu
+            .package_manager_lock_paths()
+            .contains(&"/var/lib/dpkg/lock-frontend")
+    );
+
+    let arch = DistroProfile::parse_from_os_release(ARCH_OS_RELEASE, FirmwareType::Uefi);
+    assert!(
+        arch.package_manager_lock_paths()
+            .contains(&"/var/lib/pacman/db.lck")
+    );
+
+    let suse = DistroProfile::parse_from_os_release(OPENSUSE_OS_RELEASE, FirmwareType::Uefi);
+    assert!(suse.package_manager_lock_paths().contains(&"/run/zypp.pid"));
+
+    let fedora = DistroProfile::parse_from_os_release(FEDORA_OS_RELEASE, FirmwareType::Uefi);
+    assert!(
+        fedora
+            .package_manager_lock_paths()
+            .contains(&"/var/lib/dnf/metadata.lock")
+    );
+}

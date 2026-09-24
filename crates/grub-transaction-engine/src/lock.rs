@@ -9,10 +9,12 @@ use tracing::{debug, warn};
 pub enum PackageManagerType {
     /// Debian / Ubuntu 系列 (dpkg, apt)
     Dpkg,
-    /// Red Hat / Fedora 系列 (rpm, dnf)
+    /// Red Hat / Fedora / SUSE 系列 (rpm, dnf/zypper)
     Rpm,
     /// Arch Linux 系列 (pacman)
     Pacman,
+    /// openSUSE / SUSE (zypper)
+    Zypper,
     /// 自定义包管理器
     Custom(String),
 }
@@ -23,6 +25,7 @@ impl fmt::Display for PackageManagerType {
             PackageManagerType::Dpkg => write!(f, "dpkg/apt (Debian/Ubuntu)"),
             PackageManagerType::Rpm => write!(f, "rpm/dnf (Fedora/RHEL)"),
             PackageManagerType::Pacman => write!(f, "pacman (Arch Linux)"),
+            PackageManagerType::Zypper => write!(f, "zypper (openSUSE/SUSE)"),
             PackageManagerType::Custom(name) => write!(f, "{}", name),
         }
     }
@@ -102,16 +105,22 @@ impl fmt::Display for LockError {
 impl Error for LockError {}
 
 /// 获取系统默认监控的包管理器锁列表
+///
+/// 覆盖主流家族：dpkg/apt、rpm/dnf、pacman、zypper。路径不存在时检测会安全跳过。
 pub fn default_system_locks() -> Vec<LockDescriptor> {
     vec![
         // Debian / Ubuntu
         LockDescriptor::exclusive(PackageManagerType::Dpkg, "/var/lib/dpkg/lock-frontend"),
         LockDescriptor::exclusive(PackageManagerType::Dpkg, "/var/lib/dpkg/lock"),
         LockDescriptor::exclusive(PackageManagerType::Dpkg, "/var/lib/apt/lists/lock"),
-        // Red Hat / Fedora
+        // Red Hat / Fedora / RHEL 衍生
         LockDescriptor::exclusive(PackageManagerType::Rpm, "/var/lib/rpm/.rpm.lock"),
-        // Arch Linux
+        LockDescriptor::exclusive(PackageManagerType::Rpm, "/var/lib/dnf/metadata.lock"),
+        // Arch Linux / Manjaro
         LockDescriptor::existence(PackageManagerType::Pacman, "/var/lib/pacman/db.lck"),
+        // openSUSE / SUSE
+        LockDescriptor::existence(PackageManagerType::Zypper, "/run/zypp.pid"),
+        LockDescriptor::existence(PackageManagerType::Zypper, "/var/run/zypp.pid"),
     ]
 }
 

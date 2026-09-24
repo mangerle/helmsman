@@ -77,6 +77,32 @@ impl DistroProfile {
             .unwrap_or_else(|| std::path::PathBuf::from("/boot/grub/themes"))
     }
 
+    /// 对应家族的包管理器显示名（用于日志与错误提示）
+    pub fn package_manager_label(&self) -> &'static str {
+        match self.family {
+            DistroFamily::DebianUbuntu => "dpkg/apt",
+            DistroFamily::FedoraRhel => "rpm/dnf",
+            DistroFamily::Arch => "pacman",
+            DistroFamily::OpenSuse => "zypper",
+            DistroFamily::Generic => "通用",
+        }
+    }
+
+    /// 该家族推荐监控的包管理器锁文件路径（存在性由调用方探测）
+    pub fn package_manager_lock_paths(&self) -> &'static [&'static str] {
+        match self.family {
+            DistroFamily::DebianUbuntu => &[
+                "/var/lib/dpkg/lock-frontend",
+                "/var/lib/dpkg/lock",
+                "/var/lib/apt/lists/lock",
+            ],
+            DistroFamily::FedoraRhel => &["/var/lib/rpm/.rpm.lock", "/var/lib/dnf/metadata.lock"],
+            DistroFamily::Arch => &["/var/lib/pacman/db.lck"],
+            DistroFamily::OpenSuse => &["/run/zypp.pid", "/var/run/zypp.pid"],
+            DistroFamily::Generic => &[],
+        }
+    }
+
     /// 基于 os-release 文本内容与固件类型进行确定性分析（便于单元测试与静态分析）
     ///
     /// # 设计原理
@@ -147,28 +173,52 @@ fn parse_os_release_vars(os_release: &str) -> (String, String, String) {
 
 /// 根据 ID 与 ID_LIKE 字段推导所属发行版家族
 fn resolve_distro_family(id: &str, id_like: &str) -> DistroFamily {
+    // Debian/Ubuntu 及衍生
     if id == "ubuntu"
         || id == "debian"
         || id == "linuxmint"
         || id == "pop"
+        || id == "elementary"
+        || id == "kali"
         || id_like.contains("debian")
         || id_like.contains("ubuntu")
     {
-        DistroFamily::DebianUbuntu
-    } else if id == "arch" || id == "manjaro" || id_like.contains("arch") {
-        DistroFamily::Arch
-    } else if id == "fedora"
+        return DistroFamily::DebianUbuntu;
+    }
+
+    // Arch 及衍生（Manjaro / EndeavourOS / Garuda 等）
+    if id == "arch"
+        || id == "manjaro"
+        || id == "endeavouros"
+        || id == "garuda"
+        || id == "artix"
+        || id_like.contains("arch")
+    {
+        return DistroFamily::Arch;
+    }
+
+    // Fedora / RHEL / CentOS / Rocky / Alma / Oracle
+    if id == "fedora"
         || id == "rhel"
         || id == "centos"
+        || id == "rocky"
+        || id == "almalinux"
+        || id == "ol"
+        || id == "scientific"
+        || id == "amzn"
         || id_like.contains("fedora")
         || id_like.contains("rhel")
+        || id_like.contains("centos")
     {
-        DistroFamily::FedoraRhel
-    } else if id.contains("suse") || id_like.contains("suse") {
-        DistroFamily::OpenSuse
-    } else {
-        DistroFamily::Generic
+        return DistroFamily::FedoraRhel;
     }
+
+    // openSUSE / SUSE
+    if id.contains("suse") || id.contains("opensuse") || id_like.contains("suse") {
+        return DistroFamily::OpenSuse;
+    }
+
+    DistroFamily::Generic
 }
 
 /// 构建对应家族的引导适配档案
