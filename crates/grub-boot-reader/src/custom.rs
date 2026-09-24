@@ -130,6 +130,8 @@ pub struct CustomBootEntry {
     pub raw_script: String,
     /// 是否启用该引导条目（若禁用则生成时自动注释掉）
     pub enabled: bool,
+    /// 所属子菜单标题（空字符串表示位于菜单根层级）
+    pub submenu_title: String,
 }
 
 /// 校验单个标识符（id / class）是否仅含安全字符
@@ -284,6 +286,7 @@ impl CustomBootEntry {
             cmdline_params: extra_cmdline.into(),
             raw_script: String::new(),
             enabled: true,
+            submenu_title: String::new(),
         }
     }
 
@@ -305,6 +308,7 @@ impl CustomBootEntry {
             cmdline_params: String::new(),
             raw_script: String::new(),
             enabled: true,
+            submenu_title: String::new(),
         }
     }
 
@@ -328,6 +332,7 @@ impl CustomBootEntry {
             cmdline_params: cmdline.into(),
             raw_script: String::new(),
             enabled: true,
+            submenu_title: String::new(),
         }
     }
 
@@ -348,7 +353,14 @@ impl CustomBootEntry {
             cmdline_params: String::new(),
             raw_script: script_content.into(),
             enabled: true,
+            submenu_title: String::new(),
         }
+    }
+
+    /// 将条目移入指定子菜单（空标题表示移回根层级）
+    pub fn with_submenu(mut self, submenu_title: impl Into<String>) -> Self {
+        self.submenu_title = submenu_title.into();
+        self
     }
 
     /// 对全部字段执行安全白名单校验
@@ -387,6 +399,14 @@ impl CustomBootEntry {
                     reason: "仅允许字母、数字、下划线、连字符与点".to_string(),
                 });
             }
+        }
+
+        // 子菜单标题允许为空（根层级），非空时必须符合安全标题规范
+        if !self.submenu_title.is_empty() && !is_safe_title(&self.submenu_title) {
+            return Err(CustomEntryError::InvalidTitle {
+                title: self.submenu_title.clone(),
+                reason: "子菜单标题禁止引号、换行、花括号与 shell 元字符".to_string(),
+            });
         }
 
         match self.entry_type.as_str() {
@@ -477,11 +497,18 @@ impl CustomBootEntry {
                 .join(" ")
         };
 
-        // 元数据标记注释：id/type 均已通过标识符白名单，不会引号注入
-        out.push_str(&format!(
-            "# [helmsman-meta id=\"{}\" type=\"{}\" enabled=\"{}\"]\n",
-            self.id, self.entry_type, self.enabled
-        ));
+        // 元数据标记注释：id/type/submenu 均已通过白名单，不会引号注入
+        if self.submenu_title.is_empty() {
+            out.push_str(&format!(
+                "# [helmsman-meta id=\"{}\" type=\"{}\" enabled=\"{}\"]\n",
+                self.id, self.entry_type, self.enabled
+            ));
+        } else {
+            out.push_str(&format!(
+                "# [helmsman-meta id=\"{}\" type=\"{}\" enabled=\"{}\" submenu=\"{}\"]\n",
+                self.id, self.entry_type, self.enabled, self.submenu_title
+            ));
+        }
 
         let entry_body = match self.entry_type.as_str() {
             entry_types::ISO => {
@@ -546,16 +573,40 @@ impl CustomBootEntry {
 
 /// 将自定义引导条目列表格式化为完整的 `/etc/grub.d/41_helmsman_custom` 脚本内容
 ///
+/// 根层级条目按原序输出；同名子菜单内的条目聚合为 `submenu` 块。
+///
 /// # Errors
 /// 任一条目字段未通过安全校验，或列表存在 ID/标题冲突时返回对应的 [`CustomEntryError`]。
 pub fn generate_custom_script(entries: &[CustomBootEntry]) -> Result<String, CustomEntryError> {
     validate_entry_list(entries)?;
     let mut script = String::from(HELMSMAN_CUSTOM_HEADER);
-    for entry in entries {
+
+    // 根层级条目（保持原序）
+    for entry in entries.iter().filter(|e| e.submenu_title.is_empty()) {
         script.push('\n');
         script.push_str(&entry.try_format_entry()?);
         script.push('\n');
     }
+
+    // 按首次出现顺序聚合子菜单
+    let mut submenu_order: Vec<&str> = Vec::with_capacity(4);
+    for entry in entries {
+        if !entry.submenu_title.is_empty() && !submenu_order.contains(&entry.submenu_title.as_str())
+        {
+            submenu_order.push(&entry.submenu_title);
+        }
+    }
+
+    for submenu_title in submenu_order {
+        script.push('\n');
+        script.push_str(&format!("submenu '{}' {{\n", submenu_title));
+        for entry in entries.iter().filter(|e| e.submenu_title == submenu_title) {
+            script.push_str(&entry.try_format_entry()?);
+            script.push('\n');
+        }
+        script.push_str("}\n");
+    }
+
     validate_custom_script_structure(&script)?;
     Ok(script)
 }
@@ -652,9 +703,26 @@ pub fn parse_custom_script(content: &str) -> Vec<CustomBootEntry> {
     let mut entries = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
+    let mut current_submenu: Option<String> = None;
 
     while i < lines.len() {
         let line = lines[i].trim();
+
+        // 进入子菜单块
+        if let Some(rest) = line.strip_prefix("submenu ") {
+            let title = extract_title_from_menuentry(rest)
+                .or_else(|| extract_title_from_menuentry(line))
+                .unwrap_or_default();
+            current_submenu = if title.is_empty() { None } else { Some(title) };
+            i += 1;
+            continue;
+        }
+        // 子菜单块结束
+        if line == "}" && current_submenu.is_some() {
+            current_submenu = None;
+            i += 1;
+            continue;
+        }
 
         // 识别元数据注释行
         if line.starts_with("# [helmsman-meta ") && line.ends_with(']') {
@@ -667,6 +735,10 @@ pub fn parse_custom_script(content: &str) -> Vec<CustomBootEntry> {
             let enabled = extract_meta_attr(meta_str, "enabled")
                 .map(|v| v == "true")
                 .unwrap_or(true);
+            let meta_submenu = extract_meta_attr(meta_str, "submenu");
+            let submenu_title = meta_submenu
+                .or_else(|| current_submenu.clone())
+                .unwrap_or_default();
 
             i += 1;
             let mut block_lines = Vec::new();
@@ -684,7 +756,8 @@ pub fn parse_custom_script(content: &str) -> Vec<CustomBootEntry> {
                 i += 1;
             }
 
-            if let Some(entry) = parse_single_block(&id, &entry_type, enabled, &block_lines) {
+            if let Some(mut entry) = parse_single_block(&id, &entry_type, enabled, &block_lines) {
+                entry.submenu_title = submenu_title;
                 entries.push(entry);
             }
         } else {
@@ -795,6 +868,7 @@ fn parse_single_block(
         cmdline_params,
         raw_script,
         enabled,
+        submenu_title: String::new(),
     })
 }
 
@@ -979,5 +1053,43 @@ mod tests {
             validate_custom_script_structure(&broken),
             Err(CustomEntryError::InvalidScriptStructure { .. })
         ));
+    }
+
+    #[test]
+    fn test_submenu_grouping_roundtrip() {
+        let root = CustomBootEntry::new_iso_boot("iso_root", "根条目", "/iso/r.iso", "uuid-r", "");
+        let in_tools = CustomBootEntry::new_iso_boot("iso_a", "工具 A", "/iso/a.iso", "uuid-a", "")
+            .with_submenu("工具箱");
+        let in_tools_b =
+            CustomBootEntry::new_iso_boot("iso_b", "工具 B", "/iso/b.iso", "uuid-b", "")
+                .with_submenu("工具箱");
+
+        let script = generate_custom_script(&[root.clone(), in_tools.clone(), in_tools_b.clone()])
+            .expect("子菜单分组应成功生成");
+        assert!(script.contains("submenu '工具箱' {"));
+        assert!(validate_custom_script_structure(&script).is_ok());
+
+        let parsed = parse_custom_script(&script);
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].id, "iso_root");
+        assert_eq!(parsed[0].submenu_title, "");
+        let a = parsed.iter().find(|e| e.id == "iso_a").unwrap();
+        assert_eq!(a.submenu_title, "工具箱");
+        let b = parsed.iter().find(|e| e.id == "iso_b").unwrap();
+        assert_eq!(b.submenu_title, "工具箱");
+
+        // 移出子菜单后重新生成应位于根层级
+        let mut moved = a.clone();
+        moved.submenu_title = String::new();
+        let script2 = generate_custom_script(&[root, moved, in_tools_b]).unwrap();
+        assert!(
+            !script2.contains("submenu '工具箱' {")
+                || script2
+                    .lines()
+                    .filter(|l| l.trim_start().starts_with("menuentry "))
+                    .count()
+                    >= 2
+        );
+        assert!(script2.contains("menuentry '工具 A'"));
     }
 }

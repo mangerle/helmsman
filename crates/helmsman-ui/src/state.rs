@@ -397,6 +397,33 @@ impl AppState {
         false
     }
 
+    /// 将自定义项移入指定子菜单（空标题表示移回根层级）
+    pub fn move_custom_entry_to_submenu(&mut self, id: &str, submenu_title: &str) -> bool {
+        for item in &mut self.draft_custom_entries {
+            if item.id == id {
+                item.submenu_title = submenu_title.trim().to_string();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 将自定义项移回菜单根层级
+    pub fn move_custom_entry_to_root(&mut self, id: &str) -> bool {
+        self.move_custom_entry_to_submenu(id, "")
+    }
+
+    /// 列出当前草稿中出现的子菜单标题（按首次出现顺序，去重）
+    pub fn list_custom_submenu_titles(&self) -> Vec<String> {
+        let mut titles = Vec::with_capacity(4);
+        for item in &self.draft_custom_entries {
+            if !item.submenu_title.is_empty() && !titles.contains(&item.submenu_title) {
+                titles.push(item.submenu_title.clone());
+            }
+        }
+        titles
+    }
+
     /// 设置条目友好别名
     pub fn set_entry_alias(&mut self, id_or_title: &str, alias: &str) {
         let trimmed = alias.trim();
