@@ -73,12 +73,18 @@ impl HelmsmanDbusAdapter {
 
         let authorized = check_polkit_authorization(connection, &caller, action_id, true)
             .await
-            .map_err(|e| HelmsmanDbusError::Failed(format!("PolicyKit 鉴权通信失败: {}", e)))?;
+            .map_err(|e| {
+                HelmsmanDbusError::Failed(format!(
+                    "PolicyKit 鉴权通信失败，操作: {}，原因: {}",
+                    action_id, e
+                ))
+            })?;
 
         if !authorized {
-            return Err(HelmsmanDbusError::NotAuthorized(
-                "未通过管理员身份验证".to_string(),
-            ));
+            return Err(HelmsmanDbusError::NotAuthorized(format!(
+                "未通过管理员身份验证，操作: {}",
+                action_id
+            )));
         }
 
         Ok(resolve_caller_uid_from_bus(connection, &caller).await)
@@ -101,9 +107,10 @@ impl HelmsmanDbusAdapter {
                 .map_err(|e| HelmsmanDbusError::Failed(format!("PolicyKit 鉴权通信失败: {}", e)))?;
 
         if !authorized {
-            return Err(HelmsmanDbusError::NotAuthorized(
-                "未通过引导配置读取身份验证".to_string(),
-            ));
+            return Err(HelmsmanDbusError::NotAuthorized(format!(
+                "未通过引导配置读取身份验证，操作: {}",
+                polkit_actions::ACTION_READ
+            )));
         }
 
         Ok(resolve_caller_uid_from_bus(connection, &caller).await)
@@ -204,7 +211,7 @@ impl HelmsmanDbusAdapter {
         let snapshots = tokio::task::spawn_blocking(move || service.get_available_snapshots())
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("快照列表任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+            .map_err(HelmsmanDbusError::from)?;
 
         let mut dtos = Vec::with_capacity(snapshots.len());
         for s in snapshots {
@@ -239,7 +246,7 @@ impl HelmsmanDbusAdapter {
             tokio::task::spawn_blocking(move || service.preview_snapshot_diff(&snapshot_id))
                 .await
                 .map_err(|e| HelmsmanDbusError::Failed(format!("快照差异预览任务异常终止: {e}")))?
-                .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+                .map_err(HelmsmanDbusError::from)?;
 
         Ok(DiffResultDto {
             has_changes: report.has_changes,
@@ -268,7 +275,7 @@ impl HelmsmanDbusAdapter {
         tokio::task::spawn_blocking(move || service.get_snapshot_content(&snapshot_id))
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("快照内容读取任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+            .map_err(HelmsmanDbusError::from)
     }
 
     /// 按保留上限有界裁剪历史快照（受 Polkit rollback 权限保护）
@@ -289,7 +296,7 @@ impl HelmsmanDbusAdapter {
             tokio::task::spawn_blocking(move || service.prune_snapshot_history(max_keep as usize))
                 .await
                 .map_err(|e| HelmsmanDbusError::Failed(format!("快照裁剪任务异常终止: {e}")))?
-                .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+                .map_err(HelmsmanDbusError::from)?;
         Ok(removed as u32)
     }
 
@@ -307,7 +314,7 @@ impl HelmsmanDbusAdapter {
         let report = tokio::task::spawn_blocking(move || service.preview_diff(&new_config))
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("差异预览任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+            .map_err(HelmsmanDbusError::from)?;
 
         Ok(DiffResultDto {
             has_changes: report.has_changes,
@@ -342,7 +349,7 @@ impl HelmsmanDbusAdapter {
         })
         .await
         .map_err(|e| HelmsmanDbusError::Failed(format!("默认项切换任务异常终止: {e}")))?
-        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+        .map_err(HelmsmanDbusError::from)
     }
 
     /// 提交配置修改事务（受 Polkit apply-changes 权限保护）
@@ -373,7 +380,7 @@ impl HelmsmanDbusAdapter {
         })
         .await
         .map_err(|e| HelmsmanDbusError::Failed(format!("配置提交任务异常终止: {e}")))?
-        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        .map_err(HelmsmanDbusError::from)?;
 
         Ok(ApplyResultDto {
             success: result.success,
@@ -408,7 +415,7 @@ impl HelmsmanDbusAdapter {
         })
         .await
         .map_err(|e| HelmsmanDbusError::Failed(format!("快照回滚任务异常终止: {e}")))?
-        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+        .map_err(HelmsmanDbusError::from)
     }
 
     /// 读取受管的自定义引导项列表 (/etc/grub.d/41_helmsman_custom)
@@ -423,7 +430,7 @@ impl HelmsmanDbusAdapter {
         tokio::task::spawn_blocking(move || custom_manager.load_custom_entries())
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("自定义条目读取任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+            .map_err(HelmsmanDbusError::from)
     }
 
     /// 提交自定义引导项修改（受 Polkit apply-changes 权限保护）
@@ -448,7 +455,7 @@ impl HelmsmanDbusAdapter {
         })
         .await
         .map_err(|e| HelmsmanDbusError::Failed(format!("自定义条目提交任务异常终止: {e}")))?
-        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        .map_err(HelmsmanDbusError::from)?;
 
         Ok(ApplyResultDto {
             success: result.success,
@@ -491,7 +498,7 @@ impl HelmsmanDbusAdapter {
         tokio::task::spawn_blocking(move || custom_manager.set_alias(&entry_id, &alias))
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("别名写入任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+            .map_err(HelmsmanDbusError::from)
     }
 
     /// 安装主题压缩包至系统主题目录（受 Polkit install-theme 权限保护）
@@ -530,7 +537,7 @@ impl HelmsmanDbusAdapter {
         })
         .await
         .map_err(|e| HelmsmanDbusError::Failed(format!("主题安装任务异常终止: {e}")))?
-        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        .map_err(HelmsmanDbusError::from)?;
 
         Ok(installed_path.to_string_lossy().into_owned())
     }
@@ -547,7 +554,7 @@ impl HelmsmanDbusAdapter {
         let themes = tokio::task::spawn_blocking(move || service.list_themes())
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("主题列表任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+            .map_err(HelmsmanDbusError::from)?;
 
         Ok(themes
             .into_iter()
@@ -582,7 +589,7 @@ impl HelmsmanDbusAdapter {
         tokio::task::spawn_blocking(move || service.remove_theme_as(&theme_name, caller_uid))
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("主题卸载任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+            .map_err(HelmsmanDbusError::from)
     }
 
     /// 删除指定快照（受 Polkit rollback 权限保护）
@@ -608,7 +615,7 @@ impl HelmsmanDbusAdapter {
         tokio::task::spawn_blocking(move || service.delete_snapshot_as(&snapshot_id, caller_uid))
             .await
             .map_err(|e| HelmsmanDbusError::Failed(format!("快照删除任务异常终止: {e}")))?
-            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+            .map_err(HelmsmanDbusError::from)
     }
 
     /// 导出指定快照（受 Polkit read 权限保护）
@@ -638,7 +645,7 @@ impl HelmsmanDbusAdapter {
         })
         .await
         .map_err(|e| HelmsmanDbusError::Failed(format!("快照导出任务异常终止: {e}")))?
-        .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        .map_err(HelmsmanDbusError::from)?;
 
         Ok(exported.to_string_lossy().into_owned())
     }
