@@ -94,8 +94,30 @@ pub fn create_snapshot(
         .unwrap_or_default()
         .as_secs();
 
-    let id = format!("snapshot_{}_{}", now, std::process::id());
-    let snapshot_dir = backup_base_dir.join(&id);
+    // 同一秒内批量创建时，以递增后缀保证目录唯一，避免互相覆盖
+    let mut suffix = 0u32;
+    let (id, snapshot_dir) = loop {
+        let candidate_id = if suffix == 0 {
+            format!("snapshot_{}_{}", now, std::process::id())
+        } else {
+            format!("snapshot_{}_{}_{}", now, std::process::id(), suffix)
+        };
+        let candidate_dir = backup_base_dir.join(&candidate_id);
+        if !candidate_dir.exists() {
+            break (candidate_id, candidate_dir);
+        }
+        suffix = suffix.saturating_add(1);
+        if suffix > 10_000 {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "无法为时间戳 {} 分配唯一快照目录，父目录: {}",
+                    now,
+                    backup_base_dir.display()
+                ),
+            ));
+        }
+    };
     fs::create_dir_all(&snapshot_dir)?;
 
     let file_name = target_file
@@ -253,4 +275,58 @@ pub fn export_snapshot(
     }
     fs::copy(&target.backup_file, dest_path)?;
     Ok(dest_path.to_path_buf())
+}
+
+/// 读取指定快照的备份内容原文
+///
+/// # Errors
+/// 未找到快照或备份文件读取失败时返回 `io::Error`。
+pub fn read_snapshot_content(backup_base_dir: &Path, snapshot_id: &str) -> io::Result<String> {
+    let snapshots = list_snapshots(backup_base_dir)?;
+    let target = snapshots
+        .into_iter()
+        .find(|s| s.id == snapshot_id)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("未找到快照 ID: {snapshot_id}"),
+            )
+        })?;
+    fs::read_to_string(&target.backup_file)
+}
+
+/// 生成「快照内容 → 当前目标文件」的统一差异报告
+///
+/// # 设计原理
+/// - **实现初衷**：用户回滚前需要直观看到历史与现状差异，避免盲目覆盖。
+/// - **核心优势**：复用 [`crate::diff::generate_unified_diff`]，与配置提交预览共用同一差异语义。
+/// - **代价与局限**：仅比较文本内容；若目标文件已不存在，则以空字符串作为「当前」侧。
+///
+/// # Errors
+/// 未找到快照或备份文件读取失败时返回 `io::Error`。
+pub fn diff_snapshot_against_target(
+    backup_base_dir: &Path,
+    snapshot_id: &str,
+) -> io::Result<crate::diff::DiffReport> {
+    let snapshots = list_snapshots(backup_base_dir)?;
+    let target = snapshots
+        .into_iter()
+        .find(|s| s.id == snapshot_id)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("未找到快照 ID: {snapshot_id}"),
+            )
+        })?;
+
+    let snapshot_content = fs::read_to_string(&target.backup_file)?;
+    let current_content = if target.target_file.is_file() {
+        fs::read_to_string(&target.target_file)?
+    } else {
+        String::new()
+    };
+    Ok(crate::diff::generate_unified_diff(
+        &snapshot_content,
+        &current_content,
+    ))
 }

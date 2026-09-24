@@ -219,6 +219,80 @@ impl HelmsmanDbusAdapter {
         Ok(dtos)
     }
 
+    /// 预览指定快照与当前配置的差异（受 Polkit read 权限保护）
+    pub async fn preview_snapshot_changes(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        snapshot_id: &str,
+    ) -> Result<DiffResultDto, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        if snapshot_id.trim().is_empty() {
+            return Err(HelmsmanDbusError::InvalidArgs(
+                "快照 ID 不能为空".to_string(),
+            ));
+        }
+        self.verify_polkit_read(header, connection).await?;
+        let service = Arc::clone(&self.service);
+        let snapshot_id = snapshot_id.trim().to_string();
+        let report =
+            tokio::task::spawn_blocking(move || service.preview_snapshot_diff(&snapshot_id))
+                .await
+                .map_err(|e| HelmsmanDbusError::Failed(format!("快照差异预览任务异常终止: {e}")))?
+                .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+
+        Ok(DiffResultDto {
+            has_changes: report.has_changes,
+            added_lines: report.added_lines,
+            removed_lines: report.removed_lines,
+            diff_text: report.diff_text,
+        })
+    }
+
+    /// 读取指定快照的备份内容原文（受 Polkit read 权限保护）
+    pub async fn get_snapshot_content(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        snapshot_id: &str,
+    ) -> Result<String, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        if snapshot_id.trim().is_empty() {
+            return Err(HelmsmanDbusError::InvalidArgs(
+                "快照 ID 不能为空".to_string(),
+            ));
+        }
+        self.verify_polkit_read(header, connection).await?;
+        let service = Arc::clone(&self.service);
+        let snapshot_id = snapshot_id.trim().to_string();
+        tokio::task::spawn_blocking(move || service.get_snapshot_content(&snapshot_id))
+            .await
+            .map_err(|e| HelmsmanDbusError::Failed(format!("快照内容读取任务异常终止: {e}")))?
+            .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))
+    }
+
+    /// 按保留上限有界裁剪历史快照（受 Polkit rollback 权限保护）
+    pub async fn prune_snapshots(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        max_keep: u32,
+    ) -> Result<u32, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_ROLLBACK)
+            .await?;
+        let _ = caller_uid;
+
+        let service = Arc::clone(&self.service);
+        let removed =
+            tokio::task::spawn_blocking(move || service.prune_snapshot_history(max_keep as usize))
+                .await
+                .map_err(|e| HelmsmanDbusError::Failed(format!("快照裁剪任务异常终止: {e}")))?
+                .map_err(|e| HelmsmanDbusError::Failed(e.to_string()))?;
+        Ok(removed as u32)
+    }
+
     /// 比对传入新配置与当前配置的差异
     pub async fn preview_changes(
         &self,

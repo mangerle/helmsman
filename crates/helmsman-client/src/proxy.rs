@@ -33,6 +33,15 @@ pub trait HelmsmanApi {
     /// 列出所有可用的历史配置快照
     fn list_snapshots(&self) -> zbus::Result<Vec<SnapshotDto>>;
 
+    /// 预览指定快照与当前配置的差异（回滚前确认）
+    fn preview_snapshot_changes(&self, snapshot_id: &str) -> zbus::Result<DiffResultDto>;
+
+    /// 读取指定快照的备份内容原文
+    fn get_snapshot_content(&self, snapshot_id: &str) -> zbus::Result<String>;
+
+    /// 按保留上限有界裁剪历史快照，返回删除数量
+    fn prune_snapshots(&self, max_keep: u32) -> zbus::Result<u32>;
+
     /// 比对传入新配置与当前配置的差异
     fn preview_changes(&self, new_config: &str) -> zbus::Result<DiffResultDto>;
 

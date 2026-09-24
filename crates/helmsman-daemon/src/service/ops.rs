@@ -3,8 +3,9 @@ use crate::executor::SafeCommand;
 use crate::service::{DaemonError, GrubService, TransactionOptions};
 use grub_config_parser::parse_grub_config;
 use grub_transaction_engine::{
-    InstalledThemeInfo, check_package_manager_locks, delete_snapshot, export_snapshot,
-    list_installed_themes, list_snapshots, remove_theme, restore_snapshot,
+    InstalledThemeInfo, check_package_manager_locks, delete_snapshot, diff_snapshot_against_target,
+    export_snapshot, list_installed_themes, list_snapshots, prune_snapshots, read_snapshot_content,
+    remove_theme, restore_snapshot,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -375,6 +376,55 @@ impl GrubService {
     ) -> Result<Vec<grub_transaction_engine::SnapshotMeta>, DaemonError> {
         list_snapshots(&self.backup_dir).map_err(|e| DaemonError::SnapshotListFailed {
             reason: e.to_string(),
+        })
+    }
+
+    /// 预览指定快照与当前目标文件的差异（回滚前确认）
+    ///
+    /// # Errors
+    /// 未找到快照或备份读取失败时返回对应的 [`DaemonError`]。
+    pub fn preview_snapshot_diff(
+        &self,
+        snapshot_id: &str,
+    ) -> Result<grub_transaction_engine::DiffReport, DaemonError> {
+        diff_snapshot_against_target(&self.backup_dir, snapshot_id).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                DaemonError::SnapshotNotFound {
+                    id: snapshot_id.to_string(),
+                }
+            } else {
+                DaemonError::SnapshotListFailed {
+                    reason: format!("生成快照 '{snapshot_id}' 差异预览失败: {e}"),
+                }
+            }
+        })
+    }
+
+    /// 读取指定快照的备份内容原文
+    ///
+    /// # Errors
+    /// 未找到快照或备份读取失败时返回对应的 [`DaemonError`]。
+    pub fn get_snapshot_content(&self, snapshot_id: &str) -> Result<String, DaemonError> {
+        read_snapshot_content(&self.backup_dir, snapshot_id).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                DaemonError::SnapshotNotFound {
+                    id: snapshot_id.to_string(),
+                }
+            } else {
+                DaemonError::SnapshotListFailed {
+                    reason: format!("读取快照 '{snapshot_id}' 内容失败: {e}"),
+                }
+            }
+        })
+    }
+
+    /// 按保留上限有界裁剪历史快照，返回删除数量
+    ///
+    /// # Errors
+    /// 当备份目录读取或删除失败时返回 [`DaemonError::SnapshotListFailed`]。
+    pub fn prune_snapshot_history(&self, max_keep: usize) -> Result<usize, DaemonError> {
+        prune_snapshots(&self.backup_dir, max_keep).map_err(|e| DaemonError::SnapshotListFailed {
+            reason: format!("裁剪历史快照失败（保留上限 {max_keep}）: {e}"),
         })
     }
 

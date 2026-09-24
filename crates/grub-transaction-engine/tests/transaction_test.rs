@@ -97,3 +97,31 @@ fn test_delete_and_export_snapshot() {
     assert!(left.is_empty());
     assert!(grub_transaction_engine::delete_snapshot(&backup, &snap.id).is_err());
 }
+
+#[test]
+fn test_snapshot_diff_and_prune_history() {
+    use grub_transaction_engine::{
+        create_snapshot, diff_snapshot_against_target, list_snapshots, prune_snapshots,
+    };
+
+    let base = get_test_dir("snapshot_diff_prune");
+    let target = base.join("config.txt");
+    fs::write(&target, "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n").unwrap();
+    let backup = base.join("backups");
+
+    let snap = create_snapshot(&target, &backup, "历史基线").unwrap();
+    // 修改当前文件后，差异应非空
+    fs::write(&target, "GRUB_DEFAULT=1\nGRUB_TIMEOUT=10\n").unwrap();
+    let report = diff_snapshot_against_target(&backup, &snap.id).unwrap();
+    assert!(report.has_changes);
+    assert!(report.diff_text.contains("GRUB_TIMEOUT"));
+
+    // 创建多余快照后有界裁剪
+    for i in 0..3 {
+        let _ = create_snapshot(&target, &backup, &format!("追加 {i}")).unwrap();
+    }
+    assert_eq!(list_snapshots(&backup).unwrap().len(), 4);
+    let removed = prune_snapshots(&backup, 2).unwrap();
+    assert_eq!(removed, 2);
+    assert_eq!(list_snapshots(&backup).unwrap().len(), 2);
+}

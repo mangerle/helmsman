@@ -14,8 +14,8 @@ pub use lock::{
     check_single_lock, default_system_locks,
 };
 pub use snapshot::{
-    SnapshotMeta, create_snapshot, delete_snapshot, export_snapshot, list_snapshots,
-    prune_snapshots, restore_snapshot,
+    SnapshotMeta, create_snapshot, delete_snapshot, diff_snapshot_against_target, export_snapshot,
+    list_snapshots, prune_snapshots, read_snapshot_content, restore_snapshot,
 };
 pub use theme_archive::{
     ArchiveFormat, MAX_ENTRIES_COUNT, MAX_SINGLE_FILE_SIZE, MAX_TOTAL_UNCOMPRESSED_SIZE,
