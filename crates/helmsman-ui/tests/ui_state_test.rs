@@ -205,3 +205,21 @@ fn test_class_level_menu_visibility() {
     assert!(!state.get_menu_visibility().has_any_hidden());
     assert!(!state.is_submenu_disabled());
 }
+
+#[test]
+fn test_delete_only_custom_entries() {
+    use grub_boot_reader::CustomBootEntry;
+
+    let mut state = AppState::new_from_content(SAMPLE_DEFAULT_GRUB, SAMPLE_GRUB_CFG);
+
+    // 系统条目不可删除
+    assert!(state.is_system_entry("Ubuntu"));
+    assert!(state.is_system_entry("Windows Boot Manager (on /dev/nvme0n1p1)"));
+
+    // 自定义项可删除
+    let custom = CustomBootEntry::new_iso_boot("iso_x", "自定义项", "/iso/x.iso", "uuid-x", "");
+    state.add_custom_entry(custom);
+    assert!(!state.is_system_entry("iso_x"));
+    assert!(state.remove_custom_entry("iso_x"));
+    assert!(!state.remove_custom_entry("iso_x"));
+}

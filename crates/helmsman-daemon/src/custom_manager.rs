@@ -216,6 +216,38 @@ impl CustomManager {
         res
     }
 
+    /// 删除指定自定义引导项并落盘（仅限受管自定义项）
+    ///
+    /// # 设计原理
+    /// - **实现初衷**：删除只针对 Helmsman 拥有生命周期的 `41_helmsman_custom` 条目；
+    ///   系统内核、Memtest、os-prober 条目由发行版脚本生成，**禁止物理删除**对应文件，
+    ///   否则内核升级或包管理器会立刻暴露缺口甚至无法启动。
+    /// - **核心优势**：删除 = 从受管列表移除后重新生成脚本，天然纳入快照与失败回滚。
+    /// - **代价与局限**：无法“删除”系统生成条目；此类需求只能走类级隐藏或未来单项过滤。
+    ///
+    /// # Errors
+    /// 未找到目标 ID、条目校验失败或写盘/更新失败时返回对应的 [`DaemonError`]。
+    pub fn delete_custom_entry(
+        &self,
+        service: &GrubService,
+        entry_id: &str,
+        reason: &str,
+        options: &TransactionOptions,
+    ) -> Result<TransactionResult, DaemonError> {
+        let mut entries = self.load_custom_entries()?;
+        let before = entries.len();
+        entries.retain(|e| e.id != entry_id);
+        if entries.len() == before {
+            return Err(DaemonError::CustomEntryInvalid {
+                reason: format!(
+                    "未找到 ID 为 '{}' 的自定义引导项；系统生成条目不支持删除，仅可隐藏",
+                    entry_id
+                ),
+            });
+        }
+        self.save_custom_entries(service, &entries, reason, options)
+    }
+
     /// 读取条目别名映射表
     ///
     /// # 语义说明
@@ -405,6 +437,38 @@ mod tests {
         manager.set_alias("gnulinux-6.8", "").unwrap();
         let aliases_cleared = manager.load_aliases();
         assert!(!aliases_cleared.contains_key("gnulinux-6.8"));
+    }
+
+    #[test]
+    fn test_delete_custom_entry_only() {
+        let (_base, manager, service) = get_custom_test_env("delete_custom_only");
+
+        let options = TransactionOptions {
+            skip_command_execution: true,
+            ..Default::default()
+        };
+        let a = CustomBootEntry::new_iso_boot("iso_a", "条目 A", "/iso/a.iso", "uuid-a", "");
+        let b = CustomBootEntry::new_iso_boot("iso_b", "条目 B", "/iso/b.iso", "uuid-b", "");
+        manager
+            .save_custom_entries(&service, &[a, b], "写入两项", &options)
+            .unwrap();
+        assert_eq!(manager.load_custom_entries().unwrap().len(), 2);
+
+        // 删除自定义项成功
+        let res = manager
+            .delete_custom_entry(&service, "iso_a", "删除 A", &options)
+            .unwrap();
+        assert!(res.success);
+        let left = manager.load_custom_entries().unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].id, "iso_b");
+
+        // 删除不存在的 ID（模拟系统条目）必须失败，且不得误删其他项
+        let err = manager
+            .delete_custom_entry(&service, "gnulinux-simple-xxx", "尝试删系统项", &options)
+            .unwrap_err();
+        assert!(matches!(err, DaemonError::CustomEntryInvalid { .. }));
+        assert_eq!(manager.load_custom_entries().unwrap().len(), 1);
     }
 
     #[test]

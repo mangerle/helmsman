@@ -360,10 +360,29 @@ impl AppState {
     }
 
     /// 移除自定义引导项草稿
+    ///
+    /// # 语义说明
+    /// 仅作用于 Helmsman 受管自定义项草稿；系统内核/Memtest 等发行版生成条目
+    /// **不支持删除**，如需不显示请使用类级隐藏（[`MenuVisibility`]）。
     pub fn remove_custom_entry(&mut self, id: &str) -> bool {
         let initial_len = self.draft_custom_entries.len();
         self.draft_custom_entries.retain(|e| e.id != id);
         self.draft_custom_entries.len() < initial_len
+    }
+
+    /// 判断给定条目路径/标题是否属于系统生成条目（不可删除，仅可隐藏）
+    pub fn is_system_entry(&self, full_path: &str) -> bool {
+        let is_custom = self
+            .draft_custom_entries
+            .iter()
+            .any(|e| e.id == full_path || e.title == full_path);
+        if is_custom {
+            return false;
+        }
+        self.menu_nodes
+            .iter()
+            .flat_map(|n| n.collect_entries())
+            .any(|e| e.full_path == full_path || e.title == full_path)
     }
 
     /// 更新自定义引导项草稿
