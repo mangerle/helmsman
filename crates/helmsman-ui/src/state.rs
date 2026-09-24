@@ -2,12 +2,13 @@ use crate::entry_view::{BootEntryItem, flatten_boot_entries_with_options};
 use crate::theme::{ColorPalette, FontScale, SystemColorScheme, ThemeMode};
 use grub_boot_reader::{BootEntry, CustomBootEntry, MenuNode, parse_grub_cfg};
 use grub_config_parser::{
-    BootKeyError, CmdlineError, DefaultEntry, GrubConfigFile, KernelCmdline, MenuVisibility,
-    TimeoutSeconds, TimeoutStyle, default_entry_from_index, default_entry_from_title,
-    get_cmdline_default, get_cmdline_linux, get_default_entry, get_timeout, get_timeout_style,
-    parse_grub_config, set_cmdline_default as cfg_set_cmdline_default,
-    set_cmdline_linux as cfg_set_cmdline_linux, set_default_entry as cfg_set_default_entry,
-    set_timeout as cfg_set_timeout, set_timeout_style as cfg_set_timeout_style,
+    BootKeyError, CmdlineError, DefaultEntry, DisplayConfigError, GfxMode, GrubColor,
+    GrubConfigFile, KernelCmdline, MenuVisibility, TimeoutSeconds, TimeoutStyle,
+    default_entry_from_index, default_entry_from_title, display_keys, get_cmdline_default,
+    get_cmdline_linux, get_default_entry, get_timeout, get_timeout_style, parse_grub_config,
+    set_cmdline_default as cfg_set_cmdline_default, set_cmdline_linux as cfg_set_cmdline_linux,
+    set_default_entry as cfg_set_default_entry, set_timeout as cfg_set_timeout,
+    set_timeout_style as cfg_set_timeout_style,
 };
 use grub_transaction_engine::{DiffReport, generate_unified_diff};
 use std::collections::HashMap;
@@ -412,9 +413,45 @@ impl AppState {
         self.aliases.get(id_or_title).map(|s| s.as_str())
     }
 
-    /// 设置菜单分辨率
-    pub fn set_gfxmode(&mut self, mode: &str) {
-        self.draft_config.set("GRUB_GFXMODE", mode);
+    /// 设置菜单分辨率（GRUB_GFXMODE）；空串或 auto 跟随固件
+    ///
+    /// # Errors
+    /// 当模式格式非法时返回 [`DisplayConfigError`]。
+    pub fn set_gfxmode(&mut self, mode: &str) -> Result<(), DisplayConfigError> {
+        let trimmed = mode.trim();
+        if trimmed.is_empty() {
+            return display_keys::set_gfxmode(&mut self.draft_config, None);
+        }
+        let parsed = GfxMode::parse(trimmed)?;
+        display_keys::set_gfxmode(&mut self.draft_config, Some(&parsed))
+    }
+
+    /// 获取菜单分辨率原始值
+    pub fn get_gfxmode(&self) -> Option<&str> {
+        self.draft_config.get("GRUB_GFXMODE")
+    }
+
+    /// 设置内核帧缓冲保持策略（GRUB_GFXPAYLOAD）
+    ///
+    /// # Errors
+    /// 当模式格式非法时返回 [`DisplayConfigError`]。
+    pub fn set_gfxpayload(&mut self, mode: &str) -> Result<(), DisplayConfigError> {
+        let trimmed = mode.trim();
+        if trimmed.is_empty() {
+            return display_keys::set_gfxpayload(&mut self.draft_config, None);
+        }
+        let parsed = GfxMode::parse(trimmed)?;
+        display_keys::set_gfxpayload(&mut self.draft_config, Some(&parsed))
+    }
+
+    /// 获取内核帧缓冲保持策略原始值
+    pub fn get_gfxpayload(&self) -> Option<&str> {
+        self.draft_config.get("GRUB_GFXPAYLOAD")
+    }
+
+    /// 列出常见安全分辨率（探测失败时的回退候选）
+    pub fn common_gfx_modes() -> &'static [&'static str] {
+        GfxMode::COMMON_MODES
     }
 
     /// 选中特定引导项（联动右侧检查器）
@@ -480,13 +517,14 @@ impl AppState {
     }
 
     /// 设置 GRUB 开机背景壁纸路径
-    pub fn set_grub_background_path(&mut self, path: Option<&str>) {
-        match path {
-            Some(p) if !p.trim().is_empty() => self.draft_config.set("GRUB_BACKGROUND", p.trim()),
-            _ => {
-                self.draft_config.remove("GRUB_BACKGROUND");
-            }
-        }
+    ///
+    /// # Errors
+    /// 当路径含危险字符时返回 [`DisplayConfigError`]。
+    pub fn set_grub_background_path(
+        &mut self,
+        path: Option<&str>,
+    ) -> Result<(), DisplayConfigError> {
+        display_keys::set_background(&mut self.draft_config, path)
     }
 
     /// 获取当前配置的 GRUB 开机背景壁纸路径
@@ -495,21 +533,27 @@ impl AppState {
     }
 
     /// 设置 GRUB 终端控制台文本前景色与背景色
-    pub fn set_grub_colors(&mut self, normal: Option<&str>, highlight: Option<&str>) {
-        match normal {
-            Some(n) if !n.trim().is_empty() => self.draft_config.set("GRUB_COLOR_NORMAL", n.trim()),
-            _ => {
-                self.draft_config.remove("GRUB_COLOR_NORMAL");
-            }
-        }
-        match highlight {
-            Some(h) if !h.trim().is_empty() => {
-                self.draft_config.set("GRUB_COLOR_HIGHLIGHT", h.trim())
-            }
-            _ => {
-                self.draft_config.remove("GRUB_COLOR_HIGHLIGHT");
-            }
-        }
+    ///
+    /// # Errors
+    /// 当颜色格式非法时返回 [`DisplayConfigError`]。
+    pub fn set_grub_colors(
+        &mut self,
+        normal: Option<&str>,
+        highlight: Option<&str>,
+    ) -> Result<(), DisplayConfigError> {
+        let normal_color = match normal.map(str::trim) {
+            Some(n) if !n.is_empty() => Some(GrubColor::parse(n)?),
+            _ => None,
+        };
+        let highlight_color = match highlight.map(str::trim) {
+            Some(h) if !h.is_empty() => Some(GrubColor::parse(h)?),
+            _ => None,
+        };
+        display_keys::set_colors(
+            &mut self.draft_config,
+            normal_color.as_ref(),
+            highlight_color.as_ref(),
+        )
     }
 
     /// 获取 GRUB 终端常规颜色配置

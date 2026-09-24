@@ -15,8 +15,9 @@ pub use preview::{MenuPreviewModel, PreviewEntry, Rect, VisualLayoutSnapshot};
 pub use state::AppState;
 // 重新导出引导默认项类型契约，供上层前端直接消费
 pub use grub_config_parser::{
-    BootKeyError, CmdlineError, DefaultEntry, KernelCmdline, MenuVisibility, TimeoutSeconds,
-    TimeoutStyle, default_entry_from_index, default_entry_from_title, well_known_flags,
+    BootKeyError, CmdlineError, DefaultEntry, DisplayConfigError, GfxMode, GrubColor,
+    KernelCmdline, MenuVisibility, TimeoutSeconds, TimeoutStyle, default_entry_from_index,
+    default_entry_from_title, well_known_flags,
 };
 pub use theme::{
     ColorPalette, FontConfig, FontScale, ResolvedTheme, RgbaColor, SystemColorScheme, ThemeMode,

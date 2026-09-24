@@ -3,6 +3,39 @@ use helmsman_ui::i18n::Language;
 use helmsman_ui::{AppState, ImpactAnalyzer, RiskLevel, SafetyValidator};
 
 #[test]
+fn test_display_config_typed_contract() {
+    let default_grub = "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n";
+    let grub_cfg = "menuentry 'A' { true }\n";
+    let mut state = helmsman_ui::AppState::new_from_content(default_grub, grub_cfg);
+
+    // 分辨率与 GFXPAYLOAD
+    state.set_gfxmode("1920x1080").unwrap();
+    state.set_gfxpayload("keep").unwrap();
+    assert_eq!(state.get_gfxmode(), Some("1920x1080"));
+    assert_eq!(state.get_gfxpayload(), Some("keep"));
+    assert!(state.set_gfxmode("not-a-mode").is_err());
+    assert!(state.set_gfxmode("0x0").is_err());
+
+    // 背景与颜色
+    state
+        .set_grub_background_path(Some("/boot/grub/bg.png"))
+        .unwrap();
+    state
+        .set_grub_colors(Some("white/black"), Some("black/light-gray"))
+        .unwrap();
+    assert_eq!(state.get_grub_background_path(), Some("/boot/grub/bg.png"));
+    assert!(state.set_grub_colors(Some("rainbow/black"), None).is_err());
+    assert!(
+        state
+            .set_grub_background_path(Some("/boot/$(evil).png"))
+            .is_err()
+    );
+
+    // 常见分辨率列表可用于探测回退
+    assert!(helmsman_ui::AppState::common_gfx_modes().contains(&"1920x1080"));
+}
+
+#[test]
 fn test_app_state_grub_theme_and_background_crud() {
     let default_grub = "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n";
     let grub_cfg = "menuentry 'Ubuntu' { linux /vmlinuz; }\n";
@@ -14,8 +47,12 @@ fn test_app_state_grub_theme_and_background_crud() {
 
     // 设置主题路径与背景壁纸
     state.set_grub_theme_path(Some("/boot/grub/themes/vimix/theme.txt"));
-    state.set_grub_background_path(Some("/boot/grub/wallpapers/splash.png"));
-    state.set_grub_colors(Some("light-gray/black"), Some("black/light-gray"));
+    state
+        .set_grub_background_path(Some("/boot/grub/wallpapers/splash.png"))
+        .unwrap();
+    state
+        .set_grub_colors(Some("light-gray/black"), Some("black/light-gray"))
+        .unwrap();
 
     assert_eq!(
         state.get_grub_theme_path(),

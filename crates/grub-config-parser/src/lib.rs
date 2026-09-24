@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod boot_defaults;
+pub mod display_config;
 pub mod kernel_cmdline;
 pub mod menu_visibility;
 pub mod parser;
@@ -9,6 +10,9 @@ pub use boot_defaults::{
     BootKeyError, DefaultEntry, TimeoutSeconds, TimeoutStyle, default_entry_from_index,
     default_entry_from_title, get_default_entry, get_timeout, get_timeout_style, set_default_entry,
     set_timeout, set_timeout_style,
+};
+pub use display_config::{
+    DisplayConfigError, GfxMode, GrubColor, keys as display_keys, validate_display_path,
 };
 pub use kernel_cmdline::{
     CmdlineError, KernelCmdline, get_cmdline_default, get_cmdline_linux, set_cmdline_default,
