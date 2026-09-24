@@ -43,3 +43,7 @@ required-features = ["test-support"]
 [[test]]
 name = "service_test"
 required-features = ["test-support"]
+
+[[test]]
+name = "update_grub_compat_test"
+required-features = ["test-support"]
