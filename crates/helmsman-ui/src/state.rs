@@ -1,7 +1,12 @@
 use crate::entry_view::{BootEntryItem, flatten_boot_entries_with_options};
 use crate::theme::{ColorPalette, FontScale, SystemColorScheme, ThemeMode};
 use grub_boot_reader::{BootEntry, CustomBootEntry, MenuNode, parse_grub_cfg};
-use grub_config_parser::{GrubConfigFile, parse_grub_config};
+use grub_config_parser::{
+    BootKeyError, DefaultEntry, GrubConfigFile, TimeoutSeconds, TimeoutStyle,
+    default_entry_from_index, default_entry_from_title, get_default_entry, get_timeout,
+    get_timeout_style, parse_grub_config, set_default_entry as cfg_set_default_entry,
+    set_timeout as cfg_set_timeout, set_timeout_style as cfg_set_timeout_style,
+};
 use grub_transaction_engine::{DiffReport, generate_unified_diff};
 use std::collections::HashMap;
 
@@ -124,14 +129,61 @@ impl AppState {
         generate_unified_diff(&orig_str, &draft_str)
     }
 
-    /// 设置默认启动项
-    pub fn set_default_entry(&mut self, full_path: &str) {
-        self.draft_config.set("GRUB_DEFAULT", full_path);
+    /// 设置默认启动项（标题、层级路径或纯数字语义索引）
+    ///
+    /// # Errors
+    /// 当取值非法（空标题、换行注入等）时返回 [`BootKeyError`]。
+    pub fn set_default_entry(&mut self, full_path: &str) -> Result<(), BootKeyError> {
+        let entry = DefaultEntry::parse(full_path)?;
+        cfg_set_default_entry(&mut self.draft_config, &entry)
     }
 
-    /// 获取当前设置的默认启动项
+    /// 按菜单逻辑序号设置默认启动项（原生 GRUB_DEFAULT 语义索引）
+    ///
+    /// # Errors
+    /// 仅当配置层校验失败时返回 [`BootKeyError`]。
+    pub fn set_default_entry_by_index(&mut self, index: u32) -> Result<(), BootKeyError> {
+        cfg_set_default_entry(&mut self.draft_config, &default_entry_from_index(index))
+    }
+
+    /// 将完整路径解析为菜单逻辑序号后写入语义索引
+    ///
+    /// 菜单扁平顺序与 GRUB 生成顺序一致；若无法解析路径则回退为标题写入。
+    ///
+    /// # Errors
+    /// 当标题形态非法时返回 [`BootKeyError`]。
+    pub fn set_default_entry_semantic(&mut self, full_path: &str) -> Result<(), BootKeyError> {
+        if let Some(index) = self.resolve_menu_index(full_path) {
+            return self.set_default_entry_by_index(index);
+        }
+        cfg_set_default_entry(
+            &mut self.draft_config,
+            &default_entry_from_title(full_path)?,
+        )
+    }
+
+    /// 解析条目完整路径对应的菜单逻辑序号
+    pub fn resolve_menu_index(&self, full_path: &str) -> Option<u32> {
+        let mut flat = Vec::with_capacity(16);
+        for node in &self.menu_nodes {
+            flat.extend(node.collect_entries());
+        }
+        flat.iter()
+            .position(|e| e.full_path == full_path || e.title == full_path)
+            .map(|idx| idx as u32)
+    }
+
+    /// 获取当前设置的默认启动项原始值
     pub fn get_default_entry(&self) -> Option<&str> {
         self.draft_config.get("GRUB_DEFAULT")
+    }
+
+    /// 获取当前设置的默认启动项语义形态
+    ///
+    /// # Errors
+    /// 当已配置值非法时返回 [`BootKeyError`]。
+    pub fn get_default_entry_typed(&self) -> Result<Option<DefaultEntry>, BootKeyError> {
+        get_default_entry(&self.draft_config)
     }
 
     /// 检查当前系统配置是否启用了 saved 快速引导模式
@@ -141,32 +193,54 @@ impl AppState {
 
     /// 启用 saved 快速引导模式
     pub fn enable_saved_default_mode(&mut self) {
-        self.draft_config.set("GRUB_DEFAULT", "saved");
+        let _ = cfg_set_default_entry(&mut self.draft_config, &DefaultEntry::Saved);
         self.draft_config.set("GRUB_SAVEDEFAULT", "true");
     }
 
-    /// 设置倒计时秒数
-    pub fn set_timeout(&mut self, timeout_seconds: i32) {
-        self.draft_config
-            .set("GRUB_TIMEOUT", &timeout_seconds.to_string());
+    /// 设置倒计时秒数（-1 表示无限等待）
+    ///
+    /// # Errors
+    /// 当秒数超出合法范围时返回 [`BootKeyError`]。
+    pub fn set_timeout(&mut self, timeout_seconds: i32) -> Result<(), BootKeyError> {
+        let timeout = TimeoutSeconds::try_new(timeout_seconds)?;
+        cfg_set_timeout(&mut self.draft_config, timeout)
     }
 
-    /// 获取倒计时秒数
+    /// 获取倒计时秒数（配置非法或缺失时回退为 5）
     pub fn get_timeout(&self) -> i32 {
-        self.draft_config
-            .get("GRUB_TIMEOUT")
-            .and_then(|v| v.parse().ok())
+        get_timeout(&self.draft_config)
+            .map(|t| t.as_i32())
             .unwrap_or(5)
     }
 
-    /// 设置倒计时显示风格（menu / hidden / countdown）
-    pub fn set_timeout_style(&mut self, style: &str) {
-        self.draft_config.set("GRUB_TIMEOUT_STYLE", style);
+    /// 获取倒计时秒数语义值
+    ///
+    /// # Errors
+    /// 当已配置值非法时返回 [`BootKeyError`]。
+    pub fn get_timeout_typed(&self) -> Result<TimeoutSeconds, BootKeyError> {
+        get_timeout(&self.draft_config)
     }
 
-    /// 获取倒计时显示风格
-    pub fn get_timeout_style(&self) -> &str {
-        self.draft_config.get("GRUB_TIMEOUT_STYLE").unwrap_or("")
+    /// 设置倒计时显示风格
+    ///
+    /// # Errors
+    /// 当风格枚举序列化异常时返回 [`BootKeyError`]。
+    pub fn set_timeout_style(&mut self, style: TimeoutStyle) -> Result<(), BootKeyError> {
+        cfg_set_timeout_style(&mut self.draft_config, style)
+    }
+
+    /// 获取倒计时显示风格（配置非法时回退为 menu）
+    pub fn get_timeout_style(&self) -> TimeoutStyle {
+        get_timeout_style(&self.draft_config).unwrap_or(TimeoutStyle::Menu)
+    }
+
+    /// 获取倒计时显示风格原始字符串
+    pub fn get_timeout_style_raw(&self) -> &str {
+        // 与 GRUB 缺省语义一致：未配置时展示 menu
+        match self.draft_config.get("GRUB_TIMEOUT_STYLE") {
+            Some(raw) => raw,
+            None => "menu",
+        }
     }
 
     /// 设置基础内核参数（GRUB_CMDLINE_LINUX）

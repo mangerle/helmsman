@@ -13,6 +13,11 @@ pub use i18n::{Language, TextKey, detect_system_language, format_text, get_text}
 pub use impact::{ImpactAnalyzer, ImpactItem, ImpactReport};
 pub use preview::{MenuPreviewModel, PreviewEntry, Rect, VisualLayoutSnapshot};
 pub use state::AppState;
+// 重新导出引导默认项类型契约，供上层前端直接消费
+pub use grub_config_parser::{
+    BootKeyError, DefaultEntry, TimeoutSeconds, TimeoutStyle, default_entry_from_index,
+    default_entry_from_title,
+};
 pub use theme::{
     ColorPalette, FontConfig, FontScale, ResolvedTheme, RgbaColor, SystemColorScheme, ThemeMode,
     WindowConfig,

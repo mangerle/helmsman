@@ -129,7 +129,7 @@ impl GrubConfigFile {
             }
         }
 
-        // 未找到现有项，追加至末尾
+        // 未找到现有项，追加至末尾（新键统一采用双引号，与既有写入契约一致）
         self.lines.push(ConfigLine::Assignment {
             key: key.to_string(),
             value: value.to_string(),
