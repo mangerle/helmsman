@@ -177,3 +177,31 @@ fn test_kernel_cmdline_dedup_and_flags() {
     assert!(state.set_cmdline_default("quiet; evil").is_err());
     assert_eq!(state.get_cmdline_default(), "quiet nomodeset splash");
 }
+
+#[test]
+fn test_class_level_menu_visibility() {
+    use helmsman_ui::MenuVisibility;
+
+    let mut state = AppState::new_from_content(SAMPLE_DEFAULT_GRUB, SAMPLE_GRUB_CFG);
+
+    // 默认全部显示
+    assert!(!state.get_menu_visibility().has_any_hidden());
+    assert!(!state.is_recovery_disabled());
+
+    // 类级隐藏恢复模式
+    state.set_recovery_disabled(true);
+    assert!(state.is_recovery_disabled());
+    assert!(state.get_menu_visibility().recovery_disabled);
+
+    // 拉平子菜单 + 禁用 os-prober
+    state.set_submenu_disabled(true);
+    state.set_os_prober_enabled(false);
+    let vis = state.get_menu_visibility();
+    assert!(vis.submenu_disabled);
+    assert!(vis.os_prober_disabled);
+
+    // 整体策略写入/恢复
+    state.set_menu_visibility(MenuVisibility::default());
+    assert!(!state.get_menu_visibility().has_any_hidden());
+    assert!(!state.is_submenu_disabled());
+}

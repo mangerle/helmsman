@@ -2,12 +2,12 @@ use crate::entry_view::{BootEntryItem, flatten_boot_entries_with_options};
 use crate::theme::{ColorPalette, FontScale, SystemColorScheme, ThemeMode};
 use grub_boot_reader::{BootEntry, CustomBootEntry, MenuNode, parse_grub_cfg};
 use grub_config_parser::{
-    BootKeyError, CmdlineError, DefaultEntry, GrubConfigFile, KernelCmdline, TimeoutSeconds,
-    TimeoutStyle, default_entry_from_index, default_entry_from_title, get_cmdline_default,
-    get_cmdline_linux, get_default_entry, get_timeout, get_timeout_style, parse_grub_config,
-    set_cmdline_default as cfg_set_cmdline_default, set_cmdline_linux as cfg_set_cmdline_linux,
-    set_default_entry as cfg_set_default_entry, set_timeout as cfg_set_timeout,
-    set_timeout_style as cfg_set_timeout_style,
+    BootKeyError, CmdlineError, DefaultEntry, GrubConfigFile, KernelCmdline, MenuVisibility,
+    TimeoutSeconds, TimeoutStyle, default_entry_from_index, default_entry_from_title,
+    get_cmdline_default, get_cmdline_linux, get_default_entry, get_timeout, get_timeout_style,
+    parse_grub_config, set_cmdline_default as cfg_set_cmdline_default,
+    set_cmdline_linux as cfg_set_cmdline_linux, set_default_entry as cfg_set_default_entry,
+    set_timeout as cfg_set_timeout, set_timeout_style as cfg_set_timeout_style,
 };
 use grub_transaction_engine::{DiffReport, generate_unified_diff};
 use std::collections::HashMap;
@@ -315,39 +315,43 @@ impl AppState {
 
     /// 切换 os-prober 探测
     pub fn set_os_prober_enabled(&mut self, enabled: bool) {
-        if enabled {
-            self.draft_config.remove("GRUB_DISABLE_OS_PROBER");
-        } else {
-            self.draft_config.set("GRUB_DISABLE_OS_PROBER", "true");
-        }
+        let mut vis = MenuVisibility::from_config(&self.draft_config);
+        vis.os_prober_disabled = !enabled;
+        vis.apply_to(&mut self.draft_config);
     }
 
     /// 检查是否禁用了恢复模式条目
     pub fn is_recovery_disabled(&self) -> bool {
-        self.draft_config.get("GRUB_DISABLE_RECOVERY") == Some("true")
+        MenuVisibility::from_config(&self.draft_config).recovery_disabled
     }
 
     /// 设置是否禁用恢复模式条目（零侵入隐藏恢复模式内核）
     pub fn set_recovery_disabled(&mut self, disabled: bool) {
-        if disabled {
-            self.draft_config.set("GRUB_DISABLE_RECOVERY", "true");
-        } else {
-            self.draft_config.remove("GRUB_DISABLE_RECOVERY");
-        }
+        let mut vis = MenuVisibility::from_config(&self.draft_config);
+        vis.recovery_disabled = disabled;
+        vis.apply_to(&mut self.draft_config);
     }
 
     /// 检查是否禁用了二级子菜单折叠（拉平菜单）
     pub fn is_submenu_disabled(&self) -> bool {
-        self.draft_config.get("GRUB_DISABLE_SUBMENU") == Some("y")
+        MenuVisibility::from_config(&self.draft_config).submenu_disabled
     }
 
     /// 设置是否禁用二级子菜单（零侵入控制菜单折叠与平铺）
     pub fn set_submenu_disabled(&mut self, disabled: bool) {
-        if disabled {
-            self.draft_config.set("GRUB_DISABLE_SUBMENU", "y");
-        } else {
-            self.draft_config.remove("GRUB_DISABLE_SUBMENU");
-        }
+        let mut vis = MenuVisibility::from_config(&self.draft_config);
+        vis.submenu_disabled = disabled;
+        vis.apply_to(&mut self.draft_config);
+    }
+
+    /// 读取完整类级可见性策略
+    pub fn get_menu_visibility(&self) -> MenuVisibility {
+        MenuVisibility::from_config(&self.draft_config)
+    }
+
+    /// 写入完整类级可见性策略（类级隐藏；单项隐藏不在本接口范围）
+    pub fn set_menu_visibility(&mut self, visibility: MenuVisibility) {
+        visibility.apply_to(&mut self.draft_config);
     }
 
     /// 添加自定义引导项草稿

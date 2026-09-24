@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod boot_defaults;
 pub mod kernel_cmdline;
+pub mod menu_visibility;
 pub mod parser;
 
 pub use ast::{ConfigLine, GrubConfigFile, QuoteType};
@@ -13,4 +14,5 @@ pub use kernel_cmdline::{
     CmdlineError, KernelCmdline, get_cmdline_default, get_cmdline_linux, set_cmdline_default,
     set_cmdline_linux, validate_token, well_known_flags,
 };
+pub use menu_visibility::MenuVisibility;
 pub use parser::{ParseError, parse_grub_config, parse_line};
