@@ -1,5 +1,5 @@
 use crate::app::HelmsmanWindow;
-use crate::views::entry_toolbar::render_entry_action_bar;
+use crate::views::entry_toolbar::{render_custom_title_row, render_entry_action_bar};
 use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
@@ -305,6 +305,10 @@ fn render_inspector_pane(
         .child(match selected {
             Some(entry) => {
                 let path_for_default = entry.full_path.clone();
+                let is_selected_custom = entry
+                    .id
+                    .as_deref()
+                    .is_some_and(|id| win.state.draft_custom_entries.iter().any(|c| c.id == id));
                 section_card("选中条目详情", cx)
                     .child(kv_row("显示标题", &entry.title, cx))
                     .child(kv_row("菜单路径", &entry.full_path, cx))
@@ -331,6 +335,9 @@ fn render_inspector_pane(
                         entry.root_uuid.as_deref().unwrap_or("未知"),
                         cx,
                     ))
+                    .when(is_selected_custom, |el| {
+                        el.child(render_custom_title_row(win, cx))
+                    })
                     .child(setting_row(
                         "友好显示别名",
                         "仅作用于 Helmsman 列表显示，不改动系统内核配置",

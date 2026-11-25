@@ -1,5 +1,7 @@
 use crate::app::HelmsmanWindow;
+use crate::views::setting_row;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _};
 use gpui_kit::*;
 
@@ -153,4 +155,35 @@ pub fn render_entry_action_bar(
                     cx.notify();
                 })),
         )
+}
+
+/// 渲染受管自定义条目的 GRUB 菜单显示名称编辑行（实际写入 41_helmsman_custom）
+pub fn render_custom_title_row(
+    win: &HelmsmanWindow,
+    cx: &mut Context<HelmsmanWindow>,
+) -> impl IntoElement {
+    setting_row(
+        "GRUB 菜单显示名称",
+        "修改实际开机引导菜单中展示的条目名称（仅对自定义条目生效）",
+        div()
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .w(px(280.0))
+            .child(
+                div()
+                    .flex_1()
+                    .child(Input::new(&win.custom_title_input).small()),
+            )
+            .child(
+                Button::new("btn-save-custom-title")
+                    .outline()
+                    .xsmall()
+                    .label("更新名称")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.save_selected_custom_title(cx);
+                    })),
+            ),
+        cx,
+    )
 }

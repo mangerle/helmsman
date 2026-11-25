@@ -67,6 +67,8 @@ pub struct HelmsmanWindow {
     pub alias_input: Entity<InputState>,
     /// 全局内核启动参数输入框状态
     pub cmdline_input: Entity<InputState>,
+    /// 自定义引导条目 GRUB 菜单显示标题输入框状态
+    pub custom_title_input: Entity<InputState>,
     /// 是否正在执行主题下载或安装
     pub is_installing_theme: bool,
     /// 应用自身更新状态
@@ -111,6 +113,9 @@ impl HelmsmanWindow {
             }
             input
         });
+        let custom_title_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("输入自定义条目的 GRUB 菜单显示名称")
+        });
 
         // 监听系统浅色/深色外观变化，保证“跟随系统”模式实时响应桌面环境切换
         cx.observe_window_appearance(window, |this, window, cx| {
@@ -131,6 +136,7 @@ impl HelmsmanWindow {
             entry_search_input,
             alias_input,
             cmdline_input,
+            custom_title_input,
             is_installing_theme: false,
             update_status: AppUpdateStatus::Idle,
         }
@@ -230,6 +236,54 @@ impl HelmsmanWindow {
         self.alias_input.update(cx, |input, cx| {
             input.set_value(alias, window, cx);
         });
+        let custom_title = self
+            .state
+            .get_selected_entry()
+            .and_then(|e| e.id.as_deref())
+            .and_then(|id| {
+                self.state
+                    .draft_custom_entries
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|c| c.title.clone())
+            })
+            .unwrap_or_default();
+        self.custom_title_input.update(cx, |input, cx| {
+            input.set_value(custom_title, window, cx);
+        });
+        cx.notify();
+    }
+
+    /// 保存当前选中自定义条目的实际 GRUB 菜单显示名称
+    pub fn save_selected_custom_title(&mut self, cx: &mut Context<Self>) {
+        let Some(entry_id) = self.state.get_selected_entry().and_then(|e| e.id.clone()) else {
+            return;
+        };
+        let new_title = self.custom_title_input.read(cx).value().trim().to_string();
+        if new_title.is_empty() {
+            self.toast = Some((false, "GRUB 菜单显示名称不能为空".to_string()));
+            cx.notify();
+            return;
+        }
+        let Some(mut custom) = self
+            .state
+            .draft_custom_entries
+            .iter()
+            .find(|c| c.id == entry_id)
+            .cloned()
+        else {
+            self.toast = Some((false, "仅受管自定义条目支持修改 GRUB 菜单标题".to_string()));
+            cx.notify();
+            return;
+        };
+        custom.title = new_title.clone();
+        if self.state.update_custom_entry(custom) {
+            self.state.select_entry(&new_title);
+            self.toast = Some((
+                true,
+                format!("已将 GRUB 菜单显示名称更新为 '{new_title}'（审核保存后生效）"),
+            ));
+        }
         cx.notify();
     }
 
