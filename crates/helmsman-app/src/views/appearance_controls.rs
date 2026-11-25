@@ -3,7 +3,7 @@ use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::{InputEvent, InputState, NumberInputEvent, StepAction};
 use gpui_kit::component::select::{SearchableVec, SelectEvent, SelectItem, SelectState};
 use gpui_kit::*;
-use grub_config_parser::TimeoutStyle;
+use grub_config_parser::{GrubColor, TimeoutStyle};
 use helmsman_ui::AppState;
 
 /// 下拉选择器通用键值项
@@ -48,6 +48,14 @@ pub struct AppearanceControls {
     pub gfxmode_input: Entity<InputState>,
     /// 终端颜色配色下拉选择状态
     pub color_preset_select: Entity<SelectState<SearchableVec<SelectOption>>>,
+    /// 常规前景色下拉（GRUB_COLOR_NORMAL 前景）
+    pub color_normal_fg_select: Entity<SelectState<SearchableVec<SelectOption>>>,
+    /// 常规背景色下拉（GRUB_COLOR_NORMAL 背景）
+    pub color_normal_bg_select: Entity<SelectState<SearchableVec<SelectOption>>>,
+    /// 高亮前景色下拉（GRUB_COLOR_HIGHLIGHT 前景）
+    pub color_highlight_fg_select: Entity<SelectState<SearchableVec<SelectOption>>>,
+    /// 高亮背景色下拉（GRUB_COLOR_HIGHLIGHT 背景）
+    pub color_highlight_bg_select: Entity<SelectState<SearchableVec<SelectOption>>>,
 }
 
 impl AppearanceControls {
@@ -60,6 +68,28 @@ impl AppearanceControls {
         let gfxmode_select = Self::build_gfxmode_select(state, &gfxmode_input, window, cx);
         let color_preset_select = Self::build_color_preset_select(state, window, cx);
 
+        let (norm_fg, norm_bg) = split_color_pair(
+            state.get_grub_color_normal().unwrap_or("white/black"),
+            "white",
+            "black",
+        );
+        let (hi_fg, hi_bg) = split_color_pair(
+            state
+                .get_grub_color_highlight()
+                .unwrap_or("black/light-gray"),
+            "black",
+            "light-gray",
+        );
+
+        let color_normal_fg_select =
+            Self::build_color_part_select(norm_fg, false, true, window, cx);
+        let color_normal_bg_select =
+            Self::build_color_part_select(norm_bg, false, false, window, cx);
+        let color_highlight_fg_select =
+            Self::build_color_part_select(hi_fg, true, true, window, cx);
+        let color_highlight_bg_select =
+            Self::build_color_part_select(hi_bg, true, false, window, cx);
+
         Self {
             default_entry_select,
             timeout_input,
@@ -67,6 +97,10 @@ impl AppearanceControls {
             gfxmode_select,
             gfxmode_input,
             color_preset_select,
+            color_normal_fg_select,
+            color_normal_bg_select,
+            color_highlight_fg_select,
+            color_highlight_bg_select,
         }
     }
 
@@ -361,4 +395,80 @@ impl AppearanceControls {
 
         entity
     }
+
+    fn build_color_part_select(
+        initial_color: &str,
+        is_highlight: bool,
+        is_foreground: bool,
+        window: &mut Window,
+        cx: &mut Context<HelmsmanWindow>,
+    ) -> Entity<SelectState<SearchableVec<SelectOption>>> {
+        let options: Vec<SelectOption> = GrubColor::NAMED_COLORS
+            .iter()
+            .map(|c| SelectOption::new(*c, *c))
+            .collect();
+        let initial_idx = options.iter().position(|o| o.value == initial_color);
+
+        let entity = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(options),
+                initial_idx.map(IndexPath::new),
+                window,
+                cx,
+            )
+        });
+
+        cx.subscribe_in(
+            &entity,
+            window,
+            move |this, _, ev: &SelectEvent<SearchableVec<SelectOption>>, _, cx| {
+                let SelectEvent::Confirm(Some(val)) = ev else {
+                    return;
+                };
+                let cur_norm = this
+                    .state
+                    .get_grub_color_normal()
+                    .unwrap_or("white/black")
+                    .to_string();
+                let cur_hi = this
+                    .state
+                    .get_grub_color_highlight()
+                    .unwrap_or("black/light-gray")
+                    .to_string();
+
+                let (mut nf, mut nb) = split_color_pair(&cur_norm, "white", "black");
+                let (mut hf, mut hb) = split_color_pair(&cur_hi, "black", "light-gray");
+
+                if is_highlight {
+                    if is_foreground {
+                        hf = val.as_str();
+                    } else {
+                        hb = val.as_str();
+                    }
+                } else if is_foreground {
+                    nf = val.as_str();
+                } else {
+                    nb = val.as_str();
+                }
+
+                let next_norm = format!("{nf}/{nb}");
+                let next_hi = format!("{hf}/{hb}");
+                if let Err(e) = this.state.set_grub_colors(Some(&next_norm), Some(&next_hi)) {
+                    this.toast = Some((false, e.to_string()));
+                }
+                cx.notify();
+            },
+        )
+        .detach();
+
+        entity
+    }
+}
+
+fn split_color_pair<'a>(
+    pair: &'a str,
+    default_fg: &'a str,
+    default_bg: &'a str,
+) -> (&'a str, &'a str) {
+    pair.split_once('/').unwrap_or((default_fg, default_bg))
 }

@@ -252,3 +252,67 @@ pub fn render_custom_title_row(
         cx,
     )
 }
+
+/// 渲染受管自定义条目的完整引导属性编辑卡片（目标路径、UUID、参数与子菜单名称）
+pub fn render_custom_detail_rows(
+    win: &HelmsmanWindow,
+    cx: &mut Context<HelmsmanWindow>,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .pt_2()
+        .border_t_1()
+        .border_color(cx.theme().border.opacity(0.45))
+        .child(
+            Label::new("自定义条目高级属性")
+                .text_xs()
+                .font_semibold()
+                .text_color(cx.theme().foreground),
+        )
+        .child(setting_row(
+            "目标镜像 / 内核路径",
+            "ISO、EFI 或 Linux 内核镜像路径",
+            div()
+                .w(px(280.0))
+                .child(Input::new(&win.extra_inputs.custom_target_input).small()),
+            cx,
+        ))
+        .child(setting_row(
+            "分区 UUID",
+            "存放镜像或根分区的设备 UUID",
+            div()
+                .w(px(280.0))
+                .child(Input::new(&win.extra_inputs.custom_uuid_input).small()),
+            cx,
+        ))
+        .child(setting_row(
+            "内核启动参数",
+            "仅附加于该自定义条目的命令行参数",
+            div()
+                .w(px(280.0))
+                .child(Input::new(&win.extra_inputs.custom_cmdline_input).small()),
+            cx,
+        ))
+        .child(setting_row(
+            "所属子菜单名称",
+            "自由指定归属的子菜单标题（留空置于主菜单根层级）",
+            div()
+                .w(px(280.0))
+                .child(Input::new(&win.extra_inputs.custom_submenu_input).small()),
+            cx,
+        ))
+        .child(
+            div().flex().justify_end().child(
+                Button::new("btn-save-custom-details")
+                    .outline()
+                    .small()
+                    .icon(IconName::Check)
+                    .label("保存条目属性")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.save_selected_custom_details(cx);
+                    })),
+            ),
+        )
+}

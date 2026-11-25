@@ -122,11 +122,49 @@ fn render_resolution_and_colors_section(
             cx,
         ))
         .child(setting_row(
-            "终端颜色配色 (常规 / 高亮)",
+            "终端颜色配色预设 (常规 / 高亮)",
             &format!("{color_normal}  /  {color_highlight}"),
             div()
                 .w(px(280.0))
                 .child(Select::new(&win.appearance_controls.color_preset_select).small()),
+            cx,
+        ))
+        .child(setting_row(
+            "常规文字与背景色 (GRUB_COLOR_NORMAL)",
+            "自由搭配未选中项的前景色与背景色（标准 16 色）",
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .child(
+                    div().w(px(135.0)).child(
+                        Select::new(&win.appearance_controls.color_normal_fg_select).small(),
+                    ),
+                )
+                .child(Label::new("/").text_xs())
+                .child(
+                    div().w(px(135.0)).child(
+                        Select::new(&win.appearance_controls.color_normal_bg_select).small(),
+                    ),
+                ),
+            cx,
+        ))
+        .child(setting_row(
+            "高亮文字与背景色 (GRUB_COLOR_HIGHLIGHT)",
+            "自由搭配当前选中高亮项的前景色与背景色（标准 16 色）",
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .child(
+                    div().w(px(135.0)).child(
+                        Select::new(&win.appearance_controls.color_highlight_fg_select).small(),
+                    ),
+                )
+                .child(Label::new("/").text_xs())
+                .child(div().w(px(135.0)).child(
+                    Select::new(&win.appearance_controls.color_highlight_bg_select).small(),
+                )),
             cx,
         ))
 }

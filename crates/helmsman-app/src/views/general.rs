@@ -1,11 +1,12 @@
 use crate::app::HelmsmanWindow;
 use crate::views::{page_header, scroll_page_container, section_card, setting_row};
-use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, NumberInput};
+use gpui_kit::component::label::Label;
 use gpui_kit::component::select::Select;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tag::{Tag, TagVariant};
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _};
 use gpui_kit::*;
 use grub_config_parser::well_known_flags;
 
@@ -206,4 +207,133 @@ pub fn render_general(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) ->
                     cx,
                 )),
         )
+        .child(render_advanced_env_section(win, cx))
+}
+
+fn render_advanced_env_section(
+    win: &HelmsmanWindow,
+    cx: &mut Context<HelmsmanWindow>,
+) -> impl IntoElement {
+    let vars = win.state.list_raw_config_vars();
+
+    section_card("高级环境变量 (/etc/default/grub 原始键值)", cx)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .w(px(220.0))
+                        .child(Input::new(&win.extra_inputs.env_key_input).small()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .child(Input::new(&win.extra_inputs.env_val_input).small()),
+                )
+                .child(
+                    Button::new("btn-save-raw-var")
+                        .outline()
+                        .small()
+                        .icon(IconName::Plus)
+                        .label("添加 / 更新")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let key = this
+                                .extra_inputs
+                                .env_key_input
+                                .read(cx)
+                                .value()
+                                .trim()
+                                .to_string();
+                            let val = this
+                                .extra_inputs
+                                .env_val_input
+                                .read(cx)
+                                .value()
+                                .trim()
+                                .to_string();
+                            match this.state.set_raw_config_var(&key, &val) {
+                                Ok(()) => {
+                                    this.toast = Some((
+                                        true,
+                                        format!("已更新变量 {key}={val}（审核保存后生效）"),
+                                    ));
+                                }
+                                Err(e) => {
+                                    this.toast = Some((false, e));
+                                }
+                            }
+                            cx.notify();
+                        })),
+                ),
+        )
+        .children(vars.into_iter().enumerate().map(|(idx, (k, v))| {
+            let k_edit = k.clone();
+            let v_edit = v.clone();
+            let k_del = k.clone();
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .py_1p5()
+                .border_t_1()
+                .border_color(cx.theme().border.opacity(0.35))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .min_w_0()
+                        .flex_1()
+                        .child(
+                            Tag::new()
+                                .with_variant(TagVariant::Secondary)
+                                .xsmall()
+                                .child(k),
+                        )
+                        .child(
+                            Label::new(v)
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(
+                            Button::new(("edit-raw-var", idx))
+                                .ghost()
+                                .xsmall()
+                                .label("编辑")
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.extra_inputs.env_key_input.update(cx, |s, cx| {
+                                        s.set_value(k_edit.clone(), window, cx)
+                                    });
+                                    this.extra_inputs.env_val_input.update(cx, |s, cx| {
+                                        s.set_value(v_edit.clone(), window, cx)
+                                    });
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new(("del-raw-var", idx))
+                                .ghost()
+                                .xsmall()
+                                .icon(IconName::Delete)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if this.state.remove_raw_config_var(&k_del) {
+                                        this.toast = Some((
+                                            true,
+                                            format!("已移除变量 {k_del}（审核保存后生效）"),
+                                        ));
+                                    }
+                                    cx.notify();
+                                })),
+                        ),
+                )
+        }))
 }

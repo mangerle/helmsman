@@ -1,6 +1,8 @@
 use super::AppState;
 use crate::theme::{ColorPalette, FontScale, SystemColorScheme, ThemeMode};
-use grub_config_parser::{DisplayConfigError, GfxMode, GrubColor, MenuVisibility, display_keys};
+use grub_config_parser::{
+    ConfigLine, DisplayConfigError, GfxMode, GrubColor, MenuVisibility, display_keys,
+};
 
 impl AppState {
     /// 切换 os-prober 探测
@@ -180,5 +182,70 @@ impl AppState {
     /// 获取 GRUB 终端高亮选中颜色配置
     pub fn get_grub_color_highlight(&self) -> Option<&str> {
         self.draft_config.get("GRUB_COLOR_HIGHLIGHT")
+    }
+
+    /// 列出当前草稿配置中的所有 `/etc/default/grub` 环境变量键值对
+    pub fn list_raw_config_vars(&self) -> Vec<(String, String)> {
+        self.draft_config
+            .lines
+            .iter()
+            .filter_map(|line| match line {
+                ConfigLine::Assignment { key, value, .. } => Some((key.clone(), value.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// 安全设置或新增 `/etc/default/grub` 原始环境变量（带变量名与防注入校验）
+    pub fn set_raw_config_var(&mut self, key: &str, value: &str) -> Result<(), String> {
+        let k = key.trim();
+        if k.is_empty() || k.len() > 64 {
+            return Err("变量名长度必须为 1-64 个字符".to_string());
+        }
+        let mut chars = k.chars();
+        if let Some(first) = chars.next()
+            && !first.is_ascii_alphabetic()
+            && first != '_'
+        {
+            return Err("变量名必须以字母或下划线开头".to_string());
+        }
+        if !k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err("变量名仅允许包含字母、数字与下划线".to_string());
+        }
+        if value
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '`' | '$'))
+        {
+            return Err("变量值禁止包含控制字符或反引号/$ 等潜在命令替换字符".to_string());
+        }
+        self.draft_config.set(k, value.trim());
+        Ok(())
+    }
+
+    /// 移除指定 `/etc/default/grub` 环境变量
+    pub fn remove_raw_config_var(&mut self, key: &str) -> bool {
+        self.draft_config.remove(key.trim())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_raw_config_vars_crud_and_validation() {
+        let mut state = AppState::new_from_content("GRUB_TIMEOUT=5\n", "");
+        assert_eq!(state.list_raw_config_vars().len(), 1);
+
+        assert!(state.set_raw_config_var("123BAD", "val").is_err());
+        assert!(state.set_raw_config_var("GRUB_TEST", "$(id)").is_err());
+        assert!(
+            state
+                .set_raw_config_var("GRUB_INIT_TUNE", "480 440 1")
+                .is_ok()
+        );
+        assert_eq!(state.draft_config.get("GRUB_INIT_TUNE"), Some("480 440 1"));
+        assert!(state.remove_raw_config_var("GRUB_INIT_TUNE"));
+        assert_eq!(state.draft_config.get("GRUB_INIT_TUNE"), None);
     }
 }

@@ -1,6 +1,7 @@
 use crate::backend::{self, BackendSnapshot};
 use crate::views;
 use crate::views::appearance_controls::AppearanceControls;
+use crate::views::extra_inputs::ExtraFormInputs;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::label::Label;
@@ -73,6 +74,8 @@ pub struct HelmsmanWindow {
     pub custom_title_input: Entity<InputState>,
     /// 外观设置页的步进输入与下拉选择控件集合
     pub appearance_controls: AppearanceControls,
+    /// 高级环境变量与自定义条目完整属性表单输入框集合
+    pub extra_inputs: ExtraFormInputs,
     /// 是否正在执行主题下载或安装
     pub is_installing_theme: bool,
     /// 应用自身更新状态
@@ -122,6 +125,11 @@ impl HelmsmanWindow {
             InputState::new(window, cx).placeholder("输入自定义条目的 GRUB 菜单显示名称")
         });
         let appearance_controls = AppearanceControls::new(&state, window, cx);
+        let initial_custom = state
+            .get_selected_entry()
+            .and_then(|e| e.id.as_deref())
+            .and_then(|id| state.draft_custom_entries.iter().find(|c| c.id == id));
+        let extra_inputs = ExtraFormInputs::new(initial_custom, window, cx);
 
         // 监听系统浅色/深色外观变化，保证“跟随系统”模式实时响应桌面环境切换
         cx.observe_window_appearance(window, |this, window, cx| {
@@ -144,6 +152,7 @@ impl HelmsmanWindow {
             cmdline_input,
             custom_title_input,
             appearance_controls,
+            extra_inputs,
             is_installing_theme: false,
             update_status: AppUpdateStatus::Idle,
         }
@@ -256,6 +265,71 @@ impl HelmsmanWindow {
         self.custom_title_input.update(cx, |input, cx| {
             input.set_value(menu_title, window, cx);
         });
+        let selected_custom = self
+            .state
+            .get_selected_entry()
+            .and_then(|e| e.id.as_deref())
+            .and_then(|id| {
+                self.state
+                    .draft_custom_entries
+                    .iter()
+                    .find(|c| c.id == id)
+                    .cloned()
+            });
+        self.extra_inputs
+            .sync_selected_custom(selected_custom.as_ref(), window, cx);
+        cx.notify();
+    }
+
+    /// 保存当前选中自定义条目的完整引导属性（路径、UUID、参数与子菜单名称）
+    pub fn save_selected_custom_details(&mut self, cx: &mut Context<Self>) {
+        let Some(entry_id) = self.state.get_selected_entry().and_then(|e| e.id.clone()) else {
+            return;
+        };
+        let Some(mut custom) = self
+            .state
+            .draft_custom_entries
+            .iter()
+            .find(|c| c.id == entry_id)
+            .cloned()
+        else {
+            return;
+        };
+        custom.target_path = self
+            .extra_inputs
+            .custom_target_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        custom.partition_uuid = self
+            .extra_inputs
+            .custom_uuid_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        custom.cmdline_params = self
+            .extra_inputs
+            .custom_cmdline_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        custom.submenu_title = self
+            .extra_inputs
+            .custom_submenu_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+
+        if self.state.update_custom_entry(custom) {
+            self.toast = Some((
+                true,
+                "已更新自定义引导条目属性草稿（审核保存后生效）".to_string(),
+            ));
+        }
         cx.notify();
     }
 
