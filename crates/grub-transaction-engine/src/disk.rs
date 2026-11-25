@@ -42,13 +42,26 @@ where
     lookup(path)
 }
 
+/// 向上回溯查找首个已存在的路径（用于对尚未创建的目标文件执行挂载点空间查询）
+fn resolve_existing_anchor(path: &Path) -> &Path {
+    let mut current = path;
+    while !current.exists() {
+        match current.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => current = parent,
+            _ => return Path::new("/"),
+        }
+    }
+    current
+}
+
 /// 实际系统空间查询实现（Linux 通过 df 命令安全查询；非 Unix 测试环境默认提供安全充足值）
 fn query_system_disk_space(path: &Path) -> Result<u64, String> {
     #[cfg(unix)]
     {
+        let target = resolve_existing_anchor(path);
         let output = std::process::Command::new("df")
             .arg("-B1")
-            .arg(path)
+            .arg(target)
             .output()
             .map_err(|e| format!("执行 df 命令失败: {}", e))?;
 
