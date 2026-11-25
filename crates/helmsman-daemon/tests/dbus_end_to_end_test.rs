@@ -211,7 +211,10 @@ async fn test_dbus_p2p_custom_entries_and_aliases() {
     );
 
     let apply_res = proxy
-        .apply_custom_entries(vec![iso_entry, win_entry], "添加自定义 ISO 与 Windows")
+        .apply_custom_entries(
+            vec![iso_entry.into(), win_entry.into()],
+            "添加自定义 ISO 与 Windows",
+        )
         .await
         .unwrap();
     assert!(apply_res.success);

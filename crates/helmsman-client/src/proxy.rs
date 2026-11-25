@@ -1,5 +1,6 @@
-use crate::types::{ApplyResultDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto};
-use grub_boot_reader::CustomBootEntry;
+use crate::types::{
+    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto,
+};
 use std::collections::HashMap;
 
 /// Helmsman 特权服务 D-Bus 客户端契约
@@ -55,12 +56,12 @@ pub trait HelmsmanApi {
     fn rollback_snapshot(&self, snapshot_id: &str) -> zbus::Result<()>;
 
     /// 读取受管自定义引导项
-    fn get_custom_entries(&self) -> zbus::Result<Vec<CustomBootEntry>>;
+    fn get_custom_entries(&self) -> zbus::Result<Vec<CustomBootEntryDto>>;
 
     /// 提交自定义引导项修改
     fn apply_custom_entries(
         &self,
-        entries: Vec<CustomBootEntry>,
+        entries: Vec<CustomBootEntryDto>,
         reason: &str,
     ) -> zbus::Result<ApplyResultDto>;
 

@@ -110,3 +110,70 @@ pub struct EntryAliasDto {
     /// 界面显示名（空字符串表示清除别名、回退为原始标题）
     pub display_name: String,
 }
+
+/// 自定义引导条目 D-Bus 传输契约 DTO
+///
+/// # 设计原理
+/// - **实现初衷**：将 D-Bus 传输协议（`zvariant::Type`）与底层领域解析库 `grub-boot-reader` 解耦，
+///   在客户端/服务端契约边界完成强类型领域模型与扁平 D-Bus 结构的互转。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct CustomBootEntryDto {
+    /// 唯一标识 ID
+    pub id: String,
+    /// 菜单显示标题
+    pub title: String,
+    /// 样式图标标签分类
+    pub classes: Vec<String>,
+    /// 条目分类 ("iso" / "chainloader" / "linux" / "raw")
+    pub entry_type: String,
+    /// 目标路径
+    pub target_path: String,
+    /// 目标分区 UUID
+    pub partition_uuid: String,
+    /// 初始内存盘路径
+    pub initrd_path: String,
+    /// 内核启动命令行参数
+    pub cmdline_params: String,
+    /// 原生脚本代码内容
+    pub raw_script: String,
+    /// 是否启用该引导条目
+    pub enabled: bool,
+    /// 所属子菜单标题
+    pub submenu_title: String,
+}
+
+impl From<grub_boot_reader::CustomBootEntry> for CustomBootEntryDto {
+    fn from(entry: grub_boot_reader::CustomBootEntry) -> Self {
+        Self {
+            id: entry.id,
+            title: entry.title,
+            classes: entry.classes,
+            entry_type: entry.entry_type,
+            target_path: entry.target_path,
+            partition_uuid: entry.partition_uuid,
+            initrd_path: entry.initrd_path,
+            cmdline_params: entry.cmdline_params,
+            raw_script: entry.raw_script,
+            enabled: entry.enabled,
+            submenu_title: entry.submenu_title,
+        }
+    }
+}
+
+impl From<CustomBootEntryDto> for grub_boot_reader::CustomBootEntry {
+    fn from(dto: CustomBootEntryDto) -> Self {
+        Self {
+            id: dto.id,
+            title: dto.title,
+            classes: dto.classes,
+            entry_type: dto.entry_type,
+            target_path: dto.target_path,
+            partition_uuid: dto.partition_uuid,
+            initrd_path: dto.initrd_path,
+            cmdline_params: dto.cmdline_params,
+            raw_script: dto.raw_script,
+            enabled: dto.enabled,
+            submenu_title: dto.submenu_title,
+        }
+    }
+}

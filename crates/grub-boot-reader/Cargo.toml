@@ -15,4 +15,3 @@ workspace = true
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
-zvariant.workspace = true

@@ -2,12 +2,12 @@ use crate::audit::resolve_caller_uid_from_bus;
 use crate::custom_manager::CustomManager;
 use crate::dbus_api::error::HelmsmanDbusError;
 use crate::dbus_api::{
-    ApplyResultDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto, polkit_actions,
+    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto,
+    polkit_actions,
 };
 use crate::idle::IdleWatcher;
 use crate::polkit::check_polkit_authorization;
 use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
-use grub_boot_reader::CustomBootEntry;
 use grub_transaction_engine::DiffReport;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -409,14 +409,15 @@ impl HelmsmanDbusAdapter {
         &self,
         #[zbus(header)] header: Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> Result<Vec<CustomBootEntry>, HelmsmanDbusError> {
+    ) -> Result<Vec<CustomBootEntryDto>, HelmsmanDbusError> {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
         let custom_manager = Arc::clone(&self.custom_manager);
-        spawn_service_task("自定义条目读取任务", move || {
+        let entries = spawn_service_task("自定义条目读取任务", move || {
             custom_manager.load_custom_entries()
         })
-        .await
+        .await?;
+        Ok(entries.into_iter().map(CustomBootEntryDto::from).collect())
     }
 
     /// 提交自定义引导项修改（受 Polkit apply-changes 权限保护）
@@ -424,7 +425,7 @@ impl HelmsmanDbusAdapter {
         &self,
         #[zbus(header)] header: Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-        entries: Vec<CustomBootEntry>,
+        entries: Vec<CustomBootEntryDto>,
         reason: &str,
     ) -> Result<ApplyResultDto, HelmsmanDbusError> {
         let _guard = self.idle_watcher.enter_busy();
@@ -435,8 +436,16 @@ impl HelmsmanDbusAdapter {
         let service = Arc::clone(&self.service);
         let options = self.options.clone();
         let reason = reason.to_string();
+        let domain_entries: Vec<grub_boot_reader::CustomBootEntry> =
+            entries.into_iter().map(Into::into).collect();
         let result = spawn_service_task("自定义条目提交任务", move || {
-            custom_manager.save_custom_entries_as(&service, &entries, &reason, &options, caller_uid)
+            custom_manager.save_custom_entries_as(
+                &service,
+                &domain_entries,
+                &reason,
+                &options,
+                caller_uid,
+            )
         })
         .await?;
         Ok(to_apply_dto(result))
