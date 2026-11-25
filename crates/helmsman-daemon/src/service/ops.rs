@@ -53,8 +53,8 @@ impl GrubService {
         allowed_roots.push(std::path::PathBuf::from("/tmp"));
         allowed_roots.push(std::path::PathBuf::from("/var/tmp"));
         allowed_roots.push(std::path::PathBuf::from(format!("/run/user/{caller_uid}")));
-        if let Ok(home) = std::env::var("HOME") {
-            allowed_roots.push(std::path::PathBuf::from(home));
+        if let Some(user_home) = resolve_user_home_dir(caller_uid) {
+            allowed_roots.push(user_home);
         }
 
         // Windows 下 canonicalize 会得到 \\?\ 前缀路径，允许根目录同样规范化后再比较
@@ -75,7 +75,10 @@ impl GrubService {
         {
             use std::os::unix::fs::MetadataExt;
             let owner = meta.uid();
-            if owner != 0 && owner != caller_uid {
+            let proc_uid = std::fs::metadata("/proc/self").ok().map(|m| m.uid());
+            let allowed_owner =
+                owner == 0 || owner == caller_uid || (caller_uid == 0 && proc_uid == Some(owner));
+            if !allowed_owner {
                 return Err(DaemonError::ThemeInstallFailed {
                     reason: format!(
                         "主题压缩包属主 UID {} 与调用方 UID {} 不一致: {}",
@@ -541,5 +544,65 @@ impl GrubService {
         });
 
         res
+    }
+}
+
+/// 根据调用方 Unix UID 解析其真实主目录（读取 `/etc/passwd`，避免 root 守护进程 `HOME` 误判）
+fn resolve_user_home_dir(caller_uid: u32) -> Option<PathBuf> {
+    if let Ok(passwd) = fs::read_to_string("/etc/passwd")
+        && let Some(home) = parse_passwd_home_for_uid(&passwd, caller_uid)
+    {
+        return Some(home);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if let Ok(meta) = fs::metadata("/proc/self")
+            && meta.uid() == caller_uid
+        {
+            return std::env::var_os("HOME").map(PathBuf::from);
+        }
+    }
+    None
+}
+
+/// 从 `/etc/passwd` 文本中提取指定 UID 的第 6 列主目录
+fn parse_passwd_home_for_uid(passwd_content: &str, target_uid: u32) -> Option<PathBuf> {
+    for line in passwd_content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let mut fields = trimmed.split(':');
+        let _name = fields.next()?;
+        let _pass = fields.next()?;
+        let uid_str = fields.next()?;
+        let _gid = fields.next()?;
+        let _gecos = fields.next()?;
+        let home = fields.next()?;
+        if uid_str.parse::<u32>().ok() == Some(target_uid) && !home.is_empty() {
+            return Some(PathBuf::from(home));
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_passwd_home_for_uid;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_parse_passwd_home_for_uid() {
+        let sample = "root:x:0:0:root:/root:/bin/bash\nwangle:x:1000:1000::/home/wangle:/bin/zsh\n";
+        assert_eq!(
+            parse_passwd_home_for_uid(sample, 0),
+            Some(PathBuf::from("/root"))
+        );
+        assert_eq!(
+            parse_passwd_home_for_uid(sample, 1000),
+            Some(PathBuf::from("/home/wangle"))
+        );
+        assert_eq!(parse_passwd_home_for_uid(sample, 9999), None);
     }
 }
