@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Helmsman · 现代化 Rust Linux GRUB 引导管理工具</title>
+  <meta name="description" content="Helmsman 是基于纯 Rust 与 GPUI 构建的现代化、内存安全、特权分离的 Linux GRUB 引导配置管理工具。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #2f81f7;
+      --accent-soft: #38bdf8;
+      --ok: #3fb950;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f8fa;
+        --surface: #ffffff;
+        --border: #d0d7de;
+        --text: #1f2328;
+        --muted: #656d76;
+        --accent: #0969da;
+        --accent-soft: #0284c7;
+        --ok: #1a7f37;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    .container { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; text-decoration: none; color: inherit; }
+    .brand img { width: 32px; height: 32px; }
+    nav { display: flex; gap: 20px; font-size: 14px; }
+    nav a { color: var(--muted); text-decoration: none; }
+    nav a:hover { color: var(--text); }
+    .hero { text-align: center; padding: 72px 0 56px; }
+    .hero h1 { font-size: clamp(2rem, 4vw, 3rem); margin: 0 0 16px; letter-spacing: -0.02em; }
+    .hero p { max-width: 680px; margin: 0 auto 28px; color: var(--muted); font-size: 17px; }
+    .cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; border: 1px solid var(--border); color: var(--text); background: var(--surface);
+    }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-soft)); color: #fff; border: none; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin: 32px 0 64px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+    .card h3 { margin: 0 0 8px; font-size: 16px; }
+    .card p { margin: 0; color: var(--muted); font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 24px 0 64px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; }
+    th { color: var(--muted); font-weight: 600; }
+    footer { border-top: 1px solid var(--border); padding: 28px 0; text-align: center; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="brand" href="#">
+        <img src="assets/logo.svg" alt="Helmsman Logo" />
+        <span>Helmsman</span>
+      </a>
+      <nav>
+        <a href="#features">核心特性</a>
+        <a href="#compare">方案对比</a>
+        <a href="https://github.com/mangerle/helmsman/releases">下载发行版</a>
+        <a href="https://github.com/mangerle/helmsman">GitHub</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <h1>安全、无损、现代化的 Linux GRUB 管理工具</h1>
+      <p>Helmsman 采用 100% 纯安全 Rust 与 GPUI 构建，以特权分离架构、AST 语法保真引擎与原子快照回滚取代传统 Grub Customizer，让每次引导调整与内核升级都从容可靠。</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/mangerle/helmsman/releases/latest">下载最新版本 (.deb / .AppImage)</a>
+        <a class="btn" href="https://github.com/mangerle/helmsman">查看源码仓库</a>
+      </div>
+    </section>
+
+    <section id="features" class="grid">
+      <div class="card">
+        <h3>特权分离与 Polkit 鉴权</h3>
+        <p>桌面端以普通非特权用户运行，所有系统级写入均经由 D-Bus 系统总线与 PolicyKit 鉴权，按需激活后台守护进程。</p>
+      </div>
+      <div class="card">
+        <h3>无损引导排序</h3>
+        <p>绝不劫持 <code>/etc/grub.d/10_linux</code>。采用原生 <code>GRUB_DEFAULT</code> 语义索引与受管 <code>41_helmsman_custom</code> 脚本，兼容系统内核升级。</p>
+      </div>
+      <div class="card">
+        <h3>AST 语法保真回写</h3>
+        <p>将 <code>/etc/default/grub</code> 解析为抽象语法树，修改时 100% 保留原有注释、空白行、引号风格与键值顺序。</p>
+      </div>
+      <div class="card">
+        <h3>事务原子写入与快照回滚</h3>
+        <p>每次修改提供 Unified Diff 审核、影响分析、磁盘空间预检与自动快照备份，失败可一键秒级还原。</p>
+      </div>
+      <div class="card">
+        <h3>GRUB 主题安全管理</h3>
+        <p>支持本地压缩包导入与 HTTPS 在线下载，严格防范 Zip Slip 路径穿越与解压炸弹，内置壁纸与配色设置。</p>
+      </div>
+      <div class="card">
+        <h3>Ed25519 签名自更新</h3>
+        <p>集成 shipup 自更新与启动崩溃自动回滚机制，所有发布包均经 Ed25519 签名与 SHA-256 校验。</p>
+      </div>
+    </section>
+
+    <section id="compare">
+      <h2>Helmsman 与传统 Grub Customizer 对比</h2>
+      <table>
+        <thead>
+          <tr><th>维度</th><th>Grub Customizer</th><th>Helmsman</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>开发语言与内存安全</td><td>C++ (GTK3)</td><td>100% 纯安全 Rust (forbid unsafe)</td></tr>
+          <tr><td>权限模型</td><td>整个 GUI 以 root 身份运行</td><td>非特权 UI + Polkit / D-Bus 按需守护进程</td></tr>
+          <tr><td>内核升级兼容性</td><td>篡改 10_linux 易导致菜单损坏</td><td>零侵入原生脚本，完全透明兼容</td></tr>
+          <tr><td>配置回写</td><td>覆盖重写，丢失注释与排版</td><td>AST 语法保真，保留所有注释与引号风格</td></tr>
+          <tr><td>灾难恢复</td><td>缺乏事务保护与回滚</td><td>原子替换 + 自动快照 + 失败秒级回滚</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      Helmsman · 基于 Apache-2.0 协议开源 · <a href="https://github.com/mangerle/helmsman" style="color:inherit;">github.com/mangerle/helmsman</a>
+    </footer>
+  </div>
+</body>
+</html>
