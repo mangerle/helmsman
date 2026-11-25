@@ -4,7 +4,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, IconName, Sizable as _, StyledExt as _,
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _, StyledExt as _, TitleBar,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -24,15 +24,8 @@ pub fn render_topbar(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> 
         "草稿与基准一致".to_string()
     };
 
-    div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .h(px(54.0))
-        .px_4()
-        .border_b_1()
-        .border_color(cx.theme().border.opacity(0.75))
-        .bg(cx.theme().secondary.opacity(0.75))
+    TitleBar::new()
+        .h(px(46.0))
         .child(
             div()
                 .flex()
@@ -40,7 +33,7 @@ pub fn render_topbar(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> 
                 .gap_3()
                 .child(
                     img(app_logo_image())
-                        .size(px(30.0))
+                        .size(px(28.0))
                         .rounded_lg()
                         .flex_shrink_0(),
                 )
@@ -75,6 +68,7 @@ pub fn render_topbar(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> 
                 .flex()
                 .items_center()
                 .gap_2()
+                .pr_2()
                 .child(
                     Button::new("btn-reload")
                         .ghost()

@@ -6,6 +6,7 @@ mod views;
 
 use app::HelmsmanWindow;
 use backend::BackendSnapshot;
+use gpui_kit::component::TitleBar;
 use gpui_kit::*;
 use helmsman_updater::{RecoveryStatus, check_and_recover_on_startup, confirm_update_success};
 use tracing::{error, info, warn};
@@ -51,9 +52,9 @@ fn main() {
                 ))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Helmsman · Linux GRUB 引导管理器".into()),
-                    ..Default::default()
+                    ..TitleBar::title_bar_options()
                 }),
-                ..Default::default()
+                ..TitleBar::window_options()
             };
 
             match gpui_kit::open_window(window_options, cx, move |window, cx| {
