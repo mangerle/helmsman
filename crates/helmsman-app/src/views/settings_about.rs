@@ -1,8 +1,8 @@
 use crate::app::{AppUpdateStatus, HelmsmanWindow};
-use crate::views::{kv_row, section_card};
+use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _};
 use gpui_kit::*;
 use helmsman_ui::{FontScale, ThemeMode};
 
@@ -11,31 +11,29 @@ pub fn render_settings(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -
     let current_theme = win.state.get_theme_mode();
     let current_scale = win.state.get_font_scale();
 
-    div()
-        .flex()
-        .flex_col()
-        .size_full()
-        .p_4()
-        .gap_4()
+    scroll_page_container()
+        .child(page_header(
+            "偏好设置",
+            "调整 Helmsman 桌面客户端自身的外观配色与界面缩放比例",
+            None,
+            cx,
+        ))
         .child(
-            section_card("界面视觉主题", cx)
-                .child(
-                    Label::new("切换桌面应用自身的外观配色，不会影响系统 GRUB 开机主题。")
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground),
-                )
-                .child(
-                    div().flex().gap_2().children(
+            section_card("桌面界面视觉", cx)
+                .child(setting_row(
+                    "界面主题模式",
+                    "仅影响本软件窗口配色，不会修改系统 GRUB 引导主题",
+                    div().flex().gap_1p5().children(
                         [
-                            (ThemeMode::Dark, "深色 (Dark)"),
-                            (ThemeMode::Light, "浅色 (Light)"),
+                            (ThemeMode::Dark, "深色"),
+                            (ThemeMode::Light, "浅色"),
                             (ThemeMode::HighContrast, "高对比度"),
                             (ThemeMode::System, "跟随系统"),
                         ]
                         .into_iter()
                         .enumerate()
                         .map(|(idx, (mode, title))| {
-                            let btn = Button::new(("ui-theme", idx)).small().label(title);
+                            let btn = Button::new(("ui-theme", idx)).xsmall().label(title);
                             let btn = if current_theme == mode {
                                 btn.primary()
                             } else {
@@ -46,44 +44,49 @@ pub fn render_settings(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -
                             }))
                         }),
                     ),
-                ),
-        )
-        .child(
-            section_card("界面字体缩放", cx).child(
-                div().flex().gap_2().children(
-                    [
-                        (FontScale::Standard, "标准 (1.0x)"),
-                        (FontScale::Large, "大号 (1.2x)"),
-                        (FontScale::ExtraLarge, "特大 (1.4x)"),
-                    ]
-                    .into_iter()
-                    .enumerate()
-                    .map(|(idx, (scale, title))| {
-                        let btn = Button::new(("font-scale", idx)).small().label(title);
-                        let btn = if current_scale == scale {
-                            btn.primary()
-                        } else {
-                            btn.outline()
-                        };
-                        btn.on_click(cx.listener(move |this, _, _, cx| {
-                            this.state.set_font_scale(scale);
-                            cx.notify();
-                        }))
-                    }),
-                ),
-            ),
+                    cx,
+                ))
+                .child(setting_row(
+                    "界面字体缩放",
+                    "适配高分屏或提升阅读舒适度",
+                    div().flex().gap_1p5().children(
+                        [
+                            (FontScale::Standard, "标准 1.0x"),
+                            (FontScale::Large, "大号 1.2x"),
+                            (FontScale::ExtraLarge, "特大 1.4x"),
+                        ]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, (scale, title))| {
+                            let btn = Button::new(("font-scale", idx)).xsmall().label(title);
+                            let btn = if current_scale == scale {
+                                btn.primary()
+                            } else {
+                                btn.outline()
+                            };
+                            btn.on_click(cx.listener(move |this, _, _, cx| {
+                                this.state.set_font_scale(scale);
+                                cx.notify();
+                            }))
+                        }),
+                    ),
+                    cx,
+                )),
         )
 }
 
 /// 渲染“关于与系统状态”页面
 pub fn render_about(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> impl IntoElement {
     let status = win.backend.system_status.as_ref();
-    div()
-        .flex()
-        .flex_col()
-        .size_full()
-        .p_4()
-        .gap_4()
+
+    scroll_page_container()
+        .child(page_header(
+            "更新与系统信息",
+            "查看 Helmsman 版本、应用自更新状态与底层系统引导适配器探测结果",
+            None,
+            cx,
+        ))
+        .child(render_update_section(win, cx))
         .child(
             section_card("关于 Helmsman", cx)
                 .child(kv_row("应用版本", env!("CARGO_PKG_VERSION"), cx))
@@ -99,7 +102,6 @@ pub fn render_about(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> i
                     cx,
                 )),
         )
-        .child(render_update_section(win, cx))
         .child(
             section_card("当前系统引导适配器探测结果", cx)
                 .child(kv_row(
@@ -176,6 +178,7 @@ fn render_update_section(
         Button::new("btn-check-update")
             .outline()
             .small()
+            .icon(IconName::Globe)
             .disabled(checking)
             .label(if checking {
                 "正在处理..."
@@ -193,6 +196,7 @@ fn render_update_section(
             Button::new("btn-install-update")
                 .primary()
                 .small()
+                .icon(IconName::ArrowDown)
                 .label(format!("下载并安装 v{}", info.version()))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.install_app_update(info_clone.clone(), cx);

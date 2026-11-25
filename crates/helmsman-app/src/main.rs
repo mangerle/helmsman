@@ -38,33 +38,39 @@ fn main() {
     info!("正在启动 Helmsman 桌面图形界面...");
     let snapshot = BackendSnapshot::load();
 
-    gpui_kit::application().run(move |cx| {
-        gpui_kit::init(cx);
+    gpui_kit::application()
+        .with_assets(gpui_kit::assets::Assets)
+        .run(move |cx| {
+            gpui_kit::init(cx);
 
-        let window_options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None,
-                size(px(1180.0), px(760.0)),
-                cx,
-            ))),
-            ..Default::default()
-        };
+            let window_options = WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(1240.0), px(800.0)),
+                    cx,
+                ))),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Helmsman · Linux GRUB 引导管理器".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
 
-        match gpui_kit::open_window(window_options, cx, move |window, cx| {
-            cx.new(|cx| {
-                let view = HelmsmanWindow::new(snapshot, window, cx);
-                view.sync_kit_theme(window, cx);
-                view
-            })
-        }) {
-            Ok(_) => {
-                if let Err(err) = confirm_update_success() {
-                    warn!("确认升级闭环状态失败: {err}");
+            match gpui_kit::open_window(window_options, cx, move |window, cx| {
+                cx.new(|cx| {
+                    let view = HelmsmanWindow::new(snapshot, window, cx);
+                    view.sync_kit_theme(window, cx);
+                    view
+                })
+            }) {
+                Ok(_) => {
+                    if let Err(err) = confirm_update_success() {
+                        warn!("确认升级闭环状态失败: {err}");
+                    }
+                }
+                Err(err) => {
+                    error!("创建 Helmsman 桌面主窗口失败: {err}");
                 }
             }
-            Err(err) => {
-                error!("创建 Helmsman 桌面主窗口失败: {err}");
-            }
-        }
-    });
+        });
 }

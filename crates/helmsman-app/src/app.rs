@@ -5,7 +5,9 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::component::label::Label;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::theme::{Theme, ThemeMode as KitThemeMode};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, StyledExt as _};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _, StyledExt as _,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use helmsman_ui::{
@@ -255,20 +257,31 @@ impl HelmsmanWindow {
             .flex()
             .items_center()
             .justify_between()
+            .h(px(54.0))
             .px_4()
-            .py_2p5()
             .border_b_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().secondary)
+            .border_color(cx.theme().border.opacity(0.75))
+            .bg(cx.theme().secondary.opacity(0.75))
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap_3()
                     .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size(px(30.0))
+                            .rounded_lg()
+                            .bg(cx.theme().primary.opacity(0.16))
+                            .text_color(cx.theme().primary)
+                            .child(IconName::Cpu),
+                    )
+                    .child(
                         Label::new("Helmsman")
                             .text_base()
-                            .font_semibold()
+                            .font_bold()
                             .text_color(cx.theme().foreground),
                     )
                     .child(
@@ -279,7 +292,11 @@ impl HelmsmanWindow {
                                 TagVariant::Success
                             })
                             .small()
-                            .child(self.backend.status_note.clone()),
+                            .child(if self.backend.is_demo_mode {
+                                "离线演示模式".to_string()
+                            } else {
+                                self.backend.status_note.clone()
+                            }),
                     )
                     .child(
                         Label::new(diff_summary)
@@ -296,7 +313,7 @@ impl HelmsmanWindow {
                         Button::new("btn-reload")
                             .ghost()
                             .small()
-                            .label("刷新")
+                            .label("重新同步")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.reload_from_backend(cx);
                             })),
@@ -305,7 +322,8 @@ impl HelmsmanWindow {
                         Button::new("btn-preview")
                             .outline()
                             .small()
-                            .label("菜单预览")
+                            .icon(IconName::Eye)
+                            .label("开机预览")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.open_preview_modal(cx);
                             })),
@@ -315,6 +333,7 @@ impl HelmsmanWindow {
                             Button::new("btn-reset")
                                 .ghost()
                                 .small()
+                                .icon(IconName::Close)
                                 .label("放弃修改")
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.state.reset_draft();
@@ -327,6 +346,7 @@ impl HelmsmanWindow {
                         Button::new("btn-apply")
                             .primary()
                             .small()
+                            .icon(IconName::Check)
                             .disabled(!has_changes)
                             .label("审核并保存")
                             .on_click(cx.listener(|this, _, _, cx| {

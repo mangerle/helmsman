@@ -1,17 +1,18 @@
 use crate::app::HelmsmanWindow;
-use crate::views::{kv_row, section_card};
+use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _};
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, StyledExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use grub_boot_reader::CustomBootEntry;
 use grub_config_parser::well_known_flags;
 use helmsman_ui::BootEntryItem;
 
-/// 渲染“启动项”主页面（左侧引导列表 + 右侧属性检查器与内核开关）
+/// 渲染“启动项”主页面（左侧可滚动引导列表 + 右侧可滚动属性检查器）
 pub fn render_boot_entries(
     win: &HelmsmanWindow,
     cx: &mut Context<HelmsmanWindow>,
@@ -41,27 +42,39 @@ fn render_entry_list_pane(
     div()
         .flex()
         .flex_col()
-        .w(px(380.0))
+        .w(px(360.0))
         .h_full()
         .border_r_1()
-        .border_color(cx.theme().border)
-        .p_3()
-        .gap_2()
+        .border_color(cx.theme().border.opacity(0.75))
+        .bg(cx.theme().secondary.opacity(0.2))
         .child(
             div()
                 .flex()
                 .items_center()
                 .justify_between()
+                .px_4()
+                .py_3()
+                .border_b_1()
+                .border_color(cx.theme().border.opacity(0.5))
                 .child(
-                    Label::new(format!("引导菜单项 ({})", items.len()))
-                        .text_sm()
-                        .font_semibold(),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(Label::new("引导菜单").text_sm().font_semibold())
+                        .child(
+                            Tag::new()
+                                .with_variant(TagVariant::Secondary)
+                                .xsmall()
+                                .child(format!("{}", items.len())),
+                        ),
                 )
                 .child(
                     Button::new("btn-add-sample-custom")
                         .outline()
                         .xsmall()
-                        .label("+ 添加 ISO 条目")
+                        .icon(IconName::Plus)
+                        .label("添加 ISO")
                         .on_click(cx.listener(|this, _, _, cx| {
                             let idx = this.state.draft_custom_entries.len() + 1;
                             let entry = CustomBootEntry::new_iso_boot(
@@ -74,7 +87,7 @@ fn render_entry_list_pane(
                             this.state.add_custom_entry(entry);
                             this.toast = Some((
                                 true,
-                                format!("已添加自定义 ISO 草稿条目 #{idx}（提交保存后生效）"),
+                                format!("已添加自定义 ISO 草稿条目 #{idx}（审核保存后生效）"),
                             ));
                             cx.notify();
                         })),
@@ -85,8 +98,9 @@ fn render_entry_list_pane(
                 .flex()
                 .flex_col()
                 .flex_1()
-                .gap_1p5()
-                .overflow_hidden()
+                .p_3()
+                .gap_2()
+                .overflow_y_scrollbar()
                 .children(items.iter().enumerate().map(|(idx, item)| {
                     let is_selected = selected_path == Some(item.full_path.as_str());
                     let full_path = item.full_path.clone();
@@ -99,18 +113,25 @@ fn render_entry_list_pane(
                         .items_center()
                         .justify_between()
                         .gap_2()
-                        .p_2p5()
-                        .rounded_md()
+                        .p_3()
+                        .rounded_xl()
                         .border_1()
                         .border_color(if is_selected {
                             cx.theme().primary
                         } else {
-                            cx.theme().border
+                            cx.theme().border.opacity(0.6)
                         })
                         .bg(if is_selected {
-                            cx.theme().primary.opacity(0.12)
+                            cx.theme().primary.opacity(0.14)
                         } else {
-                            cx.theme().secondary.opacity(0.3)
+                            cx.theme().background.opacity(0.75)
+                        })
+                        .hover(|s| {
+                            s.bg(if is_selected {
+                                cx.theme().primary.opacity(0.18)
+                            } else {
+                                cx.theme().secondary.opacity(0.5)
+                            })
                         })
                         .cursor_pointer()
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -120,19 +141,36 @@ fn render_entry_list_pane(
                         .child(
                             div()
                                 .flex()
-                                .flex_col()
+                                .items_center()
+                                .gap_2p5()
                                 .min_w_0()
                                 .flex_1()
-                                .gap_0p5()
+                                .child(div().w(px(6.0)).h(px(28.0)).rounded_full().bg(
+                                    if item.is_default {
+                                        cx.theme().primary
+                                    } else if is_selected {
+                                        cx.theme().primary.opacity(0.45)
+                                    } else {
+                                        cx.theme().border
+                                    },
+                                ))
                                 .child(
-                                    Label::new(item.display_title.clone())
-                                        .text_xs()
-                                        .font_medium(),
-                                )
-                                .child(
-                                    Label::new(item.full_path.clone())
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground),
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .gap_0p5()
+                                        .child(
+                                            Label::new(item.display_title.clone())
+                                                .text_xs()
+                                                .font_semibold(),
+                                        )
+                                        .child(
+                                            Label::new(item.full_path.clone())
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground),
+                                        ),
                                 ),
                         )
                         .child(
@@ -160,9 +198,9 @@ fn render_entry_list_pane(
                                     let del_id = entry_id.clone().unwrap_or_default();
                                     el.child(
                                         Button::new(("del-custom", idx))
-                                            .danger()
+                                            .ghost()
                                             .xsmall()
-                                            .label("删除")
+                                            .icon(IconName::Delete)
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 if this.state.remove_custom_entry(&del_id) {
                                                     this.toast = Some((
@@ -178,12 +216,19 @@ fn render_entry_list_pane(
                 })),
         )
         .child(
-            Label::new(format!(
-                "当前 GRUB_DEFAULT = {}",
-                win.state.get_default_entry().unwrap_or("0")
-            ))
-            .text_xs()
-            .text_color(cx.theme().muted_foreground),
+            div()
+                .px_4()
+                .py_2()
+                .border_t_1()
+                .border_color(cx.theme().border.opacity(0.5))
+                .child(
+                    Label::new(format!(
+                        "GRUB_DEFAULT = {}",
+                        win.state.get_default_entry().unwrap_or("0")
+                    ))
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground),
+                ),
         )
 }
 
@@ -200,18 +245,25 @@ fn render_inspector_pane(
     let submenu_disabled = win.state.is_submenu_disabled();
     let os_prober_disabled = win.state.get_menu_visibility().os_prober_disabled;
 
-    div()
-        .flex()
-        .flex_col()
+    scroll_page_container()
         .flex_1()
         .min_w_0()
-        .h_full()
-        .p_4()
-        .gap_4()
+        .child(page_header(
+            "启动项属性与内核策略",
+            "在左侧选择引导条目查看详情，全部参数变更均安全暂存于草稿中",
+            Some(
+                Tag::new()
+                    .with_variant(TagVariant::Info)
+                    .small()
+                    .child("草稿编辑")
+                    .into_any_element(),
+            ),
+            cx,
+        ))
         .child(match selected {
             Some(entry) => {
                 let path_for_default = entry.full_path.clone();
-                section_card("选中条目属性", cx)
+                section_card("选中条目详情", cx)
                     .child(kv_row("显示标题", &entry.title, cx))
                     .child(kv_row("菜单路径", &entry.full_path, cx))
                     .child(kv_row(
@@ -238,10 +290,11 @@ fn render_inspector_pane(
                         cx,
                     ))
                     .child(
-                        div().flex().gap_2().pt_2().child(
+                        div().flex().justify_end().pt_2().child(
                             Button::new("btn-set-default")
                                 .primary()
                                 .small()
+                                .icon(IconName::Check)
                                 .label("设为默认启动项（原生语义索引）")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     match this.state.set_default_entry_semantic(&path_for_default) {
@@ -262,7 +315,7 @@ fn render_inspector_pane(
                         ),
                     )
             }
-            None => section_card("选中条目属性", cx).child(
+            None => section_card("选中条目详情", cx).child(
                 Label::new("请在左侧列表选择一个引导条目以查看详情。")
                     .text_xs()
                     .text_color(cx.theme().muted_foreground),
@@ -271,90 +324,97 @@ fn render_inspector_pane(
         .child(
             section_card("全局内核启动参数 (GRUB_CMDLINE_LINUX_DEFAULT)", cx)
                 .child(
-                    Label::new(if cmdline_default.is_empty() {
-                        "当前为空"
-                    } else {
-                        cmdline_default
-                    })
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground),
-                )
-                .child(
                     div()
-                        .flex()
-                        .flex_wrap()
-                        .gap_4()
+                        .px_3()
+                        .py_2()
+                        .rounded_lg()
+                        .bg(cx.theme().background.opacity(0.75))
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.5))
                         .child(
-                            Switch::new("sw-quiet")
-                                .checked(has_quiet)
-                                .label("安静启动 (quiet)")
-                                .on_click(cx.listener(|this, checked, _, cx| {
-                                    let _ = this.state.set_cmdline_default_flag(
-                                        well_known_flags::QUIET,
-                                        *checked,
-                                    );
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            Switch::new("sw-splash")
-                                .checked(has_splash)
-                                .label("开机画面 (splash)")
-                                .on_click(cx.listener(|this, checked, _, cx| {
-                                    let _ = this.state.set_cmdline_default_flag(
-                                        well_known_flags::SPLASH,
-                                        *checked,
-                                    );
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            Switch::new("sw-nomodeset")
-                                .checked(has_nomodeset)
-                                .label("禁用内核模式设置 (nomodeset)")
-                                .on_click(cx.listener(|this, checked, _, cx| {
-                                    let _ = this.state.set_cmdline_default_flag(
-                                        well_known_flags::NOMODESET,
-                                        *checked,
-                                    );
-                                    cx.notify();
-                                })),
+                            Label::new(if cmdline_default.is_empty() {
+                                "（当前参数为空）"
+                            } else {
+                                cmdline_default
+                            })
+                            .text_xs()
+                            .text_color(cx.theme().foreground),
                         ),
-                ),
+                )
+                .child(setting_row(
+                    "安静启动 (quiet)",
+                    "隐藏启动过程中的大部分内核日志输出",
+                    Switch::new("sw-quiet")
+                        .checked(has_quiet)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            let _ = this
+                                .state
+                                .set_cmdline_default_flag(well_known_flags::QUIET, *checked);
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(setting_row(
+                    "开机画面 (splash)",
+                    "配合 Plymouth 展示发行版图形启动动画",
+                    Switch::new("sw-splash")
+                        .checked(has_splash)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            let _ = this
+                                .state
+                                .set_cmdline_default_flag(well_known_flags::SPLASH, *checked);
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(setting_row(
+                    "禁用内核模式设置 (nomodeset)",
+                    "遇到显卡黑屏或驱动兼容性故障时开启排障",
+                    Switch::new("sw-nomodeset")
+                        .checked(has_nomodeset)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            let _ = this
+                                .state
+                                .set_cmdline_default_flag(well_known_flags::NOMODESET, *checked);
+                            cx.notify();
+                        })),
+                    cx,
+                )),
         )
         .child(
-            section_card("菜单类级可见性策略（零侵入官方开关）", cx).child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_4()
-                    .child(
-                        Switch::new("sw-recovery")
-                            .checked(recovery_disabled)
-                            .label("隐藏恢复模式 (GRUB_DISABLE_RECOVERY)")
-                            .on_click(cx.listener(|this, checked, _, cx| {
-                                this.state.set_recovery_disabled(*checked);
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Switch::new("sw-submenu")
-                            .checked(submenu_disabled)
-                            .label("拉平二级子菜单 (GRUB_DISABLE_SUBMENU)")
-                            .on_click(cx.listener(|this, checked, _, cx| {
-                                this.state.set_submenu_disabled(*checked);
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Switch::new("sw-osprober")
-                            .checked(!os_prober_disabled)
-                            .label("启用多系统探测 (os-prober)")
-                            .on_click(cx.listener(|this, checked, _, cx| {
-                                this.state.set_os_prober_enabled(*checked);
-                                cx.notify();
-                            })),
-                    ),
-            ),
+            section_card("菜单类级可见性策略（零侵入官方开关）", cx)
+                .child(setting_row(
+                    "隐藏恢复模式 (GRUB_DISABLE_RECOVERY)",
+                    "不在引导菜单展示 recovery mode 条目，保持菜单简洁",
+                    Switch::new("sw-recovery")
+                        .checked(recovery_disabled)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            this.state.set_recovery_disabled(*checked);
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(setting_row(
+                    "拉平二级子菜单 (GRUB_DISABLE_SUBMENU)",
+                    "将高级选项中的旧内核直接平铺在主菜单列表",
+                    Switch::new("sw-submenu")
+                        .checked(submenu_disabled)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            this.state.set_submenu_disabled(*checked);
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(setting_row(
+                    "启用多系统探测 (os-prober)",
+                    "自动扫描其他分区上的 Windows 或其他 Linux 发行版",
+                    Switch::new("sw-osprober")
+                        .checked(!os_prober_disabled)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            this.state.set_os_prober_enabled(*checked);
+                            cx.notify();
+                        })),
+                    cx,
+                )),
         )
 }
