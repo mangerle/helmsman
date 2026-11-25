@@ -1,5 +1,6 @@
 pub mod appearance;
 pub mod boot_entries;
+pub mod entry_toolbar;
 pub mod modals;
 pub mod nav_rail;
 pub mod settings_about;

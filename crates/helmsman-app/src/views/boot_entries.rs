@@ -1,4 +1,5 @@
 use crate::app::HelmsmanWindow;
+use crate::views::entry_toolbar::render_entry_action_bar;
 use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
@@ -122,7 +123,8 @@ fn render_entry_list_pane(
                                 })),
                         ),
                 )
-                .child(Input::new(&win.entry_search_input).small()),
+                .child(Input::new(&win.entry_search_input).small())
+                .child(render_entry_action_bar(win, cx)),
         )
         .child(
             div()

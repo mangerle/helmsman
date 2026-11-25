@@ -57,6 +57,28 @@ impl AppState {
         self.move_custom_entry_to_submenu(id, "")
     }
 
+    /// 将自定义引导项在同列表内上移一位
+    pub fn move_custom_entry_up(&mut self, id: &str) -> bool {
+        if let Some(pos) = self.draft_custom_entries.iter().position(|e| e.id == id)
+            && pos > 0
+        {
+            self.draft_custom_entries.swap(pos - 1, pos);
+            return true;
+        }
+        false
+    }
+
+    /// 将自定义引导项在同列表内下移一位
+    pub fn move_custom_entry_down(&mut self, id: &str) -> bool {
+        if let Some(pos) = self.draft_custom_entries.iter().position(|e| e.id == id)
+            && pos + 1 < self.draft_custom_entries.len()
+        {
+            self.draft_custom_entries.swap(pos, pos + 1);
+            return true;
+        }
+        false
+    }
+
     /// 列出当前草稿中出现的子菜单标题（按首次出现顺序，去重）
     pub fn list_custom_submenu_titles(&self) -> Vec<String> {
         let mut titles = Vec::with_capacity(4);
@@ -82,5 +104,38 @@ impl AppState {
     /// 获取条目友好别名
     pub fn get_entry_alias(&self, id_or_title: &str) -> Option<&str> {
         self.aliases.get(id_or_title).map(|s| s.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_move_custom_entry_up_and_down() {
+        let mut state = AppState::new_from_content("", "");
+        state.add_custom_entry(CustomBootEntry::new_iso_boot(
+            "iso_1",
+            "ISO 1",
+            "/a.iso",
+            "0000-0001",
+            "",
+        ));
+        state.add_custom_entry(CustomBootEntry::new_iso_boot(
+            "iso_2",
+            "ISO 2",
+            "/b.iso",
+            "0000-0002",
+            "",
+        ));
+
+        assert!(!state.move_custom_entry_up("iso_1"));
+        assert!(state.move_custom_entry_down("iso_1"));
+        assert_eq!(state.draft_custom_entries[0].id, "iso_2");
+        assert_eq!(state.draft_custom_entries[1].id, "iso_1");
+
+        assert!(state.move_custom_entry_up("iso_1"));
+        assert_eq!(state.draft_custom_entries[0].id, "iso_1");
+        assert!(!state.move_custom_entry_down("iso_2"));
     }
 }
