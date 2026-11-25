@@ -30,6 +30,7 @@ pub enum AppUpdateStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveTab {
     BootEntries,
+    General,
     Appearance,
     Snapshots,
     Settings,
@@ -515,6 +516,9 @@ impl Render for HelmsmanWindow {
                                 ActiveTab::BootEntries => {
                                     views::boot_entries::render_boot_entries(self, cx)
                                         .into_any_element()
+                                }
+                                ActiveTab::General => {
+                                    views::general::render_general(self, cx).into_any_element()
                                 }
                                 ActiveTab::Appearance => {
                                     views::appearance::render_appearance(self, cx)

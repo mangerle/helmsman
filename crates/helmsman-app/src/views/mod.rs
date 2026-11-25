@@ -2,6 +2,7 @@ pub mod appearance;
 pub mod appearance_controls;
 pub mod boot_entries;
 pub mod entry_toolbar;
+pub mod general;
 pub mod modals;
 pub mod nav_rail;
 pub mod settings_about;

@@ -7,13 +7,11 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::label::Label;
 use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, StyledExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use grub_boot_reader::CustomBootEntry;
-use grub_config_parser::well_known_flags;
 use helmsman_ui::BootEntryItem;
 
 /// 渲染“启动项”主页面（左侧可滚动引导列表 + 右侧可滚动属性检查器）
@@ -284,21 +282,13 @@ fn render_inspector_pane(
     cx: &mut Context<HelmsmanWindow>,
 ) -> impl IntoElement {
     let selected = win.state.get_selected_entry().cloned();
-    let has_saved_default = win.state.is_saved_default_enabled();
-    let cmdline_default = win.state.get_cmdline_default();
-    let has_quiet = cmdline_default.split_whitespace().any(|t| t == "quiet");
-    let has_splash = cmdline_default.split_whitespace().any(|t| t == "splash");
-    let has_nomodeset = cmdline_default.split_whitespace().any(|t| t == "nomodeset");
-    let recovery_disabled = win.state.is_recovery_disabled();
-    let submenu_disabled = win.state.is_submenu_disabled();
-    let os_prober_disabled = win.state.get_menu_visibility().os_prober_disabled;
 
     scroll_page_container()
         .flex_1()
         .min_w_0()
         .child(page_header(
-            "启动项属性与内核策略",
-            "在左侧选择引导条目查看详情，全部参数变更均安全暂存于草稿中",
+            "启动项属性详情",
+            "在左侧选择或调整引导条目顺序、子菜单归组与隐藏状态，全部变更暂存于草稿中",
             Some(
                 Tag::new()
                     .with_variant(TagVariant::Info)
@@ -397,117 +387,10 @@ fn render_inspector_pane(
             ),
         })
         .child(
-            section_card("全局内核启动参数 (GRUB_CMDLINE_LINUX_DEFAULT)", cx)
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(div().flex_1().child(Input::new(&win.cmdline_input).small()))
-                        .child(
-                            Button::new("btn-apply-cmdline")
-                                .outline()
-                                .small()
-                                .label("应用参数")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.apply_cmdline_input(cx);
-                                })),
-                        ),
-                )
-                .child(setting_row(
-                    "安静启动 (quiet)",
-                    "隐藏启动过程中的大部分内核日志输出",
-                    Switch::new("sw-quiet")
-                        .checked(has_quiet)
-                        .on_click(cx.listener(|this, checked, window, cx| {
-                            this.toggle_cmdline_flag(well_known_flags::QUIET, *checked, window, cx);
-                        })),
-                    cx,
-                ))
-                .child(setting_row(
-                    "开机画面 (splash)",
-                    "配合 Plymouth 展示发行版图形启动动画",
-                    Switch::new("sw-splash")
-                        .checked(has_splash)
-                        .on_click(cx.listener(|this, checked, window, cx| {
-                            this.toggle_cmdline_flag(
-                                well_known_flags::SPLASH,
-                                *checked,
-                                window,
-                                cx,
-                            );
-                        })),
-                    cx,
-                ))
-                .child(setting_row(
-                    "禁用内核模式设置 (nomodeset)",
-                    "遇到显卡黑屏或驱动兼容性故障时开启排障",
-                    Switch::new("sw-nomodeset")
-                        .checked(has_nomodeset)
-                        .on_click(cx.listener(|this, checked, window, cx| {
-                            this.toggle_cmdline_flag(
-                                well_known_flags::NOMODESET,
-                                *checked,
-                                window,
-                                cx,
-                            );
-                        })),
-                    cx,
-                )),
-        )
-        .child(
-            section_card("默认启动模式与菜单可见性策略", cx)
-                .child(setting_row(
-                    "记忆上次启动项 (GRUB_DEFAULT=saved)",
-                    "开启后自动选中上一次开机所选条目；关闭则使用预定义默认项",
-                    Switch::new("sw-saved-default")
-                        .checked(has_saved_default)
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            if *checked {
-                                this.state.enable_saved_default_mode();
-                                this.toast =
-                                    Some((true, "已切换为“记忆上一个启动项”模式".to_string()));
-                            } else {
-                                let _ = this.state.set_default_entry_by_index(0);
-                                this.toast =
-                                    Some((true, "已切换为“预定义默认项 (0)”模式".to_string()));
-                            }
-                            cx.notify();
-                        })),
-                    cx,
-                ))
-                .child(setting_row(
-                    "隐藏恢复模式 (GRUB_DISABLE_RECOVERY)",
-                    "不在引导菜单展示 recovery mode 条目，保持菜单简洁",
-                    Switch::new("sw-recovery")
-                        .checked(recovery_disabled)
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            this.state.set_recovery_disabled(*checked);
-                            cx.notify();
-                        })),
-                    cx,
-                ))
-                .child(setting_row(
-                    "拉平二级子菜单 (GRUB_DISABLE_SUBMENU)",
-                    "将高级选项中的旧内核直接平铺在主菜单列表",
-                    Switch::new("sw-submenu")
-                        .checked(submenu_disabled)
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            this.state.set_submenu_disabled(*checked);
-                            cx.notify();
-                        })),
-                    cx,
-                ))
-                .child(setting_row(
-                    "启用多系统探测 (os-prober)",
-                    "自动扫描其他分区上的 Windows 或其他 Linux 发行版",
-                    Switch::new("sw-osprober")
-                        .checked(!os_prober_disabled)
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            this.state.set_os_prober_enabled(*checked);
-                            cx.notify();
-                        })),
-                    cx,
-                )),
+            section_card("提示", cx).child(
+                Label::new("默认启动项模式、等待倒计时、os-prober 与全局内核参数（quiet / splash / nomodeset）已统一归口至左侧导航的“常规引导设置”页面。")
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground),
+            ),
         )
 }

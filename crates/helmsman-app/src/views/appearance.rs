@@ -2,7 +2,7 @@ use crate::app::HelmsmanWindow;
 use crate::backend::FEATURED_THEMES;
 use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, NumberInput};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::label::Label;
 use gpui_kit::component::select::Select;
 use gpui_kit::component::tag::{Tag, TagVariant};
@@ -20,7 +20,7 @@ pub fn render_appearance(
     scroll_page_container()
         .child(page_header(
             "主题与视觉外观",
-            "自定义 GRUB 引导倒计时、显示分辨率、壁纸配色以及在线下载/本地导入 GRUB 主题",
+            "自定义 GRUB 显示分辨率、开机壁纸配色以及在线下载/本地导入 GRUB 主题",
             Some(
                 Button::new("btn-page-preview")
                     .outline()
@@ -34,62 +34,9 @@ pub fn render_appearance(
             ),
             cx,
         ))
-        .child(render_timeout_section(win, cx))
         .child(render_resolution_and_colors_section(win, cx))
         .child(render_themes_section(win, cx))
         .child(render_online_themes_section(win, cx))
-}
-
-fn render_timeout_section(
-    win: &HelmsmanWindow,
-    cx: &mut Context<HelmsmanWindow>,
-) -> impl IntoElement {
-    let timeout = win.state.get_timeout();
-
-    section_card("等待倒计时与菜单显示策略", cx)
-        .child(setting_row(
-            "菜单等待倒计时 (GRUB_TIMEOUT)",
-            &format!("当前设置: {timeout} 秒（-1 表示无限等待）"),
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .w(px(140.0))
-                        .child(NumberInput::new(&win.appearance_controls.timeout_input).small()),
-                )
-                .child({
-                    let btn = Button::new("btn-timeout-infinite")
-                        .small()
-                        .label("无限等待");
-                    let btn = if timeout < 0 {
-                        btn.primary()
-                    } else {
-                        btn.outline()
-                    };
-                    btn.on_click(cx.listener(|this, _, window, cx| {
-                        let next = if this.state.get_timeout() < 0 { 5 } else { -1 };
-                        if let Err(e) = this.state.set_timeout(next) {
-                            this.toast = Some((false, e.to_string()));
-                        } else {
-                            this.appearance_controls.timeout_input.update(cx, |s, cx| {
-                                s.set_value(next.to_string(), window, cx);
-                            });
-                        }
-                        cx.notify();
-                    }))
-                }),
-            cx,
-        ))
-        .child(setting_row(
-            "菜单显示风格 (GRUB_TIMEOUT_STYLE)",
-            "控制开机时是直接展示完整菜单、倒计时还是静默等待",
-            div()
-                .w(px(230.0))
-                .child(Select::new(&win.appearance_controls.timeout_style_select).small()),
-            cx,
-        ))
 }
 
 fn render_resolution_and_colors_section(

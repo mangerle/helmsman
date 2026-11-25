@@ -34,8 +34,10 @@ impl SelectItem for SelectOption {
     }
 }
 
-/// 外观设置页面的步进输入与下拉选择控件状态集合
+/// 外观与常规引导页面的步进输入与下拉选择控件状态集合
 pub struct AppearanceControls {
+    /// 预定义默认启动项下拉选择状态
+    pub default_entry_select: Entity<SelectState<SearchableVec<SelectOption>>>,
     /// 菜单等待倒计时步进输入框状态
     pub timeout_input: Entity<InputState>,
     /// 菜单显示风格下拉选择状态
@@ -49,8 +51,9 @@ pub struct AppearanceControls {
 }
 
 impl AppearanceControls {
-    /// 初始化全部外观页交互控件并绑定状态同步事件
+    /// 初始化全部外观与常规引导交互控件并绑定状态同步事件
     pub fn new(state: &AppState, window: &mut Window, cx: &mut Context<HelmsmanWindow>) -> Self {
+        let default_entry_select = Self::build_default_entry_select(state, window, cx);
         let timeout_input = Self::build_timeout_input(state, window, cx);
         let timeout_style_select = Self::build_timeout_style_select(state, window, cx);
         let gfxmode_input = Self::build_gfxmode_input(state, window, cx);
@@ -58,12 +61,67 @@ impl AppearanceControls {
         let color_preset_select = Self::build_color_preset_select(state, window, cx);
 
         Self {
+            default_entry_select,
             timeout_input,
             timeout_style_select,
             gfxmode_select,
             gfxmode_input,
             color_preset_select,
         }
+    }
+
+    fn build_default_entry_select(
+        state: &AppState,
+        window: &mut Window,
+        cx: &mut Context<HelmsmanWindow>,
+    ) -> Entity<SelectState<SearchableVec<SelectOption>>> {
+        let mut options = vec![SelectOption::new("第一项 (索引 0)", "__index_0")];
+        for item in state.get_entry_items() {
+            options.push(SelectOption::new(item.display_title, item.full_path));
+        }
+
+        let current_default = state.get_default_entry().unwrap_or("0");
+        let initial_idx = if current_default == "0" {
+            Some(0)
+        } else {
+            options.iter().position(|o| o.value == current_default)
+        };
+
+        let entity = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(options),
+                initial_idx.map(IndexPath::new),
+                window,
+                cx,
+            )
+        });
+
+        cx.subscribe_in(
+            &entity,
+            window,
+            |this, _, ev: &SelectEvent<SearchableVec<SelectOption>>, _, cx| {
+                let SelectEvent::Confirm(Some(val)) = ev else {
+                    return;
+                };
+                let res = if val == "__index_0" {
+                    this.state.set_default_entry_by_index(0)
+                } else {
+                    this.state.set_default_entry_semantic(val)
+                };
+                match res {
+                    Ok(()) => {
+                        this.toast = Some((true, "已更新预定义默认启动项草稿".to_string()));
+                    }
+                    Err(e) => {
+                        this.toast = Some((false, e.to_string()));
+                    }
+                }
+                cx.notify();
+            },
+        )
+        .detach();
+
+        entity
     }
 
     fn build_timeout_input(

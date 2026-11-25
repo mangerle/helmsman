@@ -113,6 +113,15 @@ pub fn render_nav_rail(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -
                     cx,
                 ))
                 .child(nav_item(
+                    "nav-general",
+                    "常规引导设置",
+                    IconName::Settings2,
+                    ActiveTab::General,
+                    win.active_tab,
+                    collapsed,
+                    cx,
+                ))
+                .child(nav_item(
                     "nav-appearance",
                     "主题与外观",
                     IconName::Palette,
