@@ -223,3 +223,47 @@ fn test_delete_only_custom_entries() {
     assert!(state.remove_custom_entry("iso_x"));
     assert!(!state.remove_custom_entry("iso_x"));
 }
+
+#[test]
+fn test_app_state_custom_entries_and_aliases() {
+    use grub_boot_reader::CustomBootEntry;
+
+    let default_grub = "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\n";
+    let grub_cfg = "menuentry 'Ubuntu, with Linux 6.8' --id 'gnulinux-6.8' {}\nmenuentry 'Ubuntu (recovery)' --id 'gnulinux-rec' {}\n";
+
+    let mut state = AppState::new_from_content(default_grub, grub_cfg);
+
+    state.set_entry_alias("gnulinux-6.8", "Ubuntu 6.8 (生产)");
+    assert_eq!(
+        state.get_entry_alias("gnulinux-6.8"),
+        Some("Ubuntu 6.8 (生产)")
+    );
+
+    let items = state.get_entry_items();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].display_title, "Ubuntu 6.8 (生产)");
+
+    state.set_recovery_disabled(true);
+    assert!(state.is_recovery_disabled());
+    let filtered_items = state.get_entry_items();
+    assert_eq!(filtered_items.len(), 1);
+    assert_eq!(filtered_items[0].id.as_deref(), Some("gnulinux-6.8"));
+
+    let custom_entry = CustomBootEntry::new_iso_boot(
+        "iso_live",
+        "Fedora Workstation Live",
+        "/boot/iso/fedora.iso",
+        "UUID-7788",
+        "",
+    );
+    state.add_custom_entry(custom_entry);
+    assert!(state.has_custom_entry_changes());
+    assert!(state.has_unsaved_changes());
+
+    let items_with_custom = state.get_entry_items();
+    assert_eq!(items_with_custom.len(), 2);
+    assert!(items_with_custom.iter().any(|i| i.is_custom));
+
+    assert!(state.remove_custom_entry("iso_live"));
+    assert!(!state.has_custom_entry_changes());
+}
