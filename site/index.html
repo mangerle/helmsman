@@ -1,144 +1,692 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Helmsman · 现代化 Rust Linux GRUB 引导管理工具</title>
-  <meta name="description" content="Helmsman 是基于纯 Rust 与 GPUI 构建的现代化、内存安全、特权分离的 Linux GRUB 引导配置管理工具。" />
-  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
-  <style>
-    :root {
-      --bg: #0d1117;
-      --surface: #161b22;
-      --border: #30363d;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --accent: #2f81f7;
-      --accent-soft: #38bdf8;
-      --ok: #3fb950;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #f6f8fa;
-        --surface: #ffffff;
-        --border: #d0d7de;
-        --text: #1f2328;
-        --muted: #656d76;
-        --accent: #0969da;
-        --accent-soft: #0284c7;
-        --ok: #1a7f37;
-      }
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.65;
-    }
-    .container { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
-    header {
-      border-bottom: 1px solid var(--border);
-      padding: 18px 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; text-decoration: none; color: inherit; }
-    .brand img { width: 32px; height: 32px; }
-    nav { display: flex; gap: 20px; font-size: 14px; }
-    nav a { color: var(--muted); text-decoration: none; }
-    nav a:hover { color: var(--text); }
-    .hero { text-align: center; padding: 72px 0 56px; }
-    .hero h1 { font-size: clamp(2rem, 4vw, 3rem); margin: 0 0 16px; letter-spacing: -0.02em; }
-    .hero p { max-width: 680px; margin: 0 auto 28px; color: var(--muted); font-size: 17px; }
-    .cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-    .btn {
-      padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
-      text-decoration: none; border: 1px solid var(--border); color: var(--text); background: var(--surface);
-    }
-    .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-soft)); color: #fff; border: none; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin: 32px 0 64px; }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
-    .card h3 { margin: 0 0 8px; font-size: 16px; }
-    .card p { margin: 0; color: var(--muted); font-size: 14px; }
-    table { width: 100%; border-collapse: collapse; margin: 24px 0 64px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-    th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; }
-    th { color: var(--muted); font-weight: 600; }
-    footer { border-top: 1px solid var(--border); padding: 28px 0; text-align: center; color: var(--muted); font-size: 13px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helmsman · 现代化 Rust Linux GRUB 引导控制台</title>
+<meta name="description" content="Helmsman 是基于纯安全 Rust 与 GPUI 构建的现代化 Linux GRUB 引导管理控制台，支持全量菜单编排、AST 保真解析、Polkit 特权分离、原子快照回滚与 GRUB 主题在线安装。">
+<meta name="theme-color" content="#070d19">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://mangerle.github.io/helmsman/">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="Helmsman · 现代化 Rust Linux GRUB 引导控制台">
+<meta property="og:description" content="安全、无损、现代化的 Linux GRUB 引导与主题管理控制台。">
+<meta property="og:url" content="https://mangerle.github.io/helmsman/">
+<script>document.documentElement.classList.add('js');</script>
+<style>
+:root{
+  --bg:#060c18;--surface-1:#0b1526;--surface-2:#0f1d35;--surface-3:#152744;--surface-4:#1e355b;
+  --text:#f0f6ff;--muted:#93a8c8;--soft:#c6d5ec;--line:rgba(148,184,235,.16);
+  --accent:#3b82f6;--accent-strong:#38bdf8;--accent-ink:#031525;--gold:#fbbf24;--cyan:#22d3ee;--ok:#34d399;
+  --danger:#fb7185;--radius-sm:9px;--radius-md:14px;--radius-lg:20px;--radius-xl:28px;
+  --curve:cubic-bezier(.22,1,.36,1);--shadow:0 32px 90px -36px rgba(0,0,0,.92),inset 0 1px 0 rgba(255,255,255,.06)
+}
+*{box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{
+  margin:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  color:var(--text);background:var(--bg);
+  font:400 16px/1.5 "Inter","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility
+}
+body::before{
+  content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(72% 60% at 54% -12%,rgba(37,99,235,.26),transparent 68%),
+    radial-gradient(38% 32% at 94% 14%,rgba(6,182,212,.22),transparent 72%),
+    radial-gradient(35% 28% at 10% 78%,rgba(56,189,248,.08),transparent 76%)
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.18;
+  background-image:linear-gradient(rgba(148,184,235,.13) 1px,transparent 1px),linear-gradient(90deg,rgba(148,184,235,.13) 1px,transparent 1px);
+  background-size:56px 56px;-webkit-mask-image:radial-gradient(82% 66% at 50% 8%,#000,transparent 88%);mask-image:radial-gradient(82% 66% at 50% 8%,#000,transparent 88%)
+}
+a{color:inherit;text-decoration:none}
+button{font:inherit}
+img{display:block;max-width:100%;height:auto;object-fit:contain}
+button,a{-webkit-tap-highlight-color:transparent}
+::selection{background:var(--accent-strong);color:var(--accent-ink)}
+.skip-link{position:fixed;left:16px;top:-80px;z-index:100;padding:8px 12px;border-radius:var(--radius-sm);background:var(--accent-strong);color:var(--accent-ink)}
+.skip-link:focus{top:12px}
+.container{width:min(1180px,calc(100% - 40px));margin-inline:auto}
+.icon{width:24px;height:24px;fill:currentColor;flex:none}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+.heading-1{font-size:52px;line-height:1.08;font-weight:700;letter-spacing:-.04em}
+.heading-2{font-size:40px;line-height:1.12;font-weight:700;letter-spacing:-.035em}
+.heading-3{font-size:32px;line-height:1.15;font-weight:680;letter-spacing:-.03em}
+.body-lg{font-size:17px;line-height:1.72;color:var(--muted)}
+.body-md{font-size:15px;line-height:1.68;color:var(--muted)}
+.body-sm{font-size:13px;line-height:1.62;color:var(--muted)}
+.kicker{display:inline-flex;align-items:center;gap:8px;color:var(--accent-strong);font-size:12px;line-height:16px;font-weight:650;letter-spacing:.04em}
+.kicker::before{content:"";width:7px;height:7px;border-radius:999px;background:currentColor;box-shadow:0 0 16px currentColor}
+.gradient-text{display:block;background:linear-gradient(100deg,#fff 8%,#bfdbfe 46%,#38bdf8 76%,#22d3ee);-webkit-background-clip:text;background-clip:text;color:transparent}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:0 18px;border:1px solid transparent;border-radius:12px;font-size:14px;line-height:20px;font-weight:650;transition:transform .2s var(--curve),background-color .2s,border-color .2s,color .2s}
+.button:hover{transform:translateY(-1px)}
+.button-primary{background:linear-gradient(135deg,#2563eb,#06b6d4);color:#fff;box-shadow:0 12px 30px -14px rgba(56,189,248,.65)}
+.button-primary:hover{filter:brightness(1.08)}
+.button-secondary{border-color:var(--line);background:rgba(255,255,255,.045);color:var(--text)}
+.button-secondary:hover{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.08)}
+:focus-visible{outline:2px solid var(--accent-strong);outline-offset:3px}
+
+.site-header{position:relative;z-index:50;padding:14px 0 8px;background:linear-gradient(to bottom,var(--bg) 0,var(--bg) 72%,rgba(6,12,24,0) 100%)}
+.nav-bar{height:62px;display:flex;align-items:center;justify-content:space-between;gap:22px;padding:0 10px 0 18px;border:1px solid var(--line);border-radius:18px;background:rgba(11,21,38,.88);box-shadow:var(--shadow);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%)}
+.brand{display:flex;align-items:center;gap:10px;font-size:16px;line-height:24px;font-weight:700;letter-spacing:-.02em}
+.brand img{width:32px;height:32px;border-radius:9px}
+.nav-links{display:flex;align-items:center;gap:22px}
+.nav-link{position:relative;padding:7px 0;border:0;background:none;color:var(--muted);font-size:13px;line-height:18px;font-weight:550;cursor:pointer;transition:color .2s}
+.nav-link:hover,.nav-link:focus-visible,.nav-link[aria-current="page"]{color:var(--text)}
+.nav-link[aria-current="page"]::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:99px;background:var(--accent-strong)}
+.nav-actions{display:flex;align-items:center;gap:8px}
+.nav-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:10px;color:var(--muted);transition:color .2s,background-color .2s}
+.nav-icon:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.menu-toggle{display:none;position:relative;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--text);cursor:pointer}
+.menu-toggle span{position:absolute;width:19px;height:2px;background:currentColor;transition:transform .35s var(--curve),opacity .2s}
+.menu-toggle span:first-child{transform:translateY(-6px)}
+.menu-toggle span:last-child{transform:translateY(6px)}
+body.menu-open .menu-toggle span:first-child{transform:rotate(45deg)}
+body.menu-open .menu-toggle span:nth-child(2){opacity:0}
+body.menu-open .menu-toggle span:last-child{transform:rotate(-45deg)}
+.mobile-menu{position:fixed;inset:0;z-index:45;display:none;padding:104px 24px 32px;background:rgba(6,12,24,.98);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);opacity:0;visibility:hidden;transition:opacity .35s,visibility .35s}
+.mobile-menu button{display:block;width:100%;padding:13px 0;border:0;background:none;color:var(--muted);text-align:left;font-size:24px;line-height:1.35;font-weight:560;opacity:0;transform:translateY(18px);transition:opacity .4s var(--curve),transform .4s var(--curve),color .2s;transition-delay:calc(var(--i) * 42ms)}
+body.menu-open .mobile-menu{opacity:1;visibility:visible}
+body.menu-open .mobile-menu button{opacity:1;transform:none}
+
+.deck{position:relative;min-height:0;overflow:hidden;isolation:isolate;outline:none}
+.slide{position:absolute;inset:0;display:block;padding:8px 0 20px;overflow-y:auto;overscroll-behavior:contain;opacity:0;visibility:hidden;transform:translateY(32px);pointer-events:none;transition:opacity .45s var(--curve),transform .6s var(--curve),visibility .45s;scrollbar-width:thin;scrollbar-color:var(--surface-4) transparent}
+.slide.is-before{transform:translateY(-32px)}
+.slide.is-active{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+.slide-inner{width:min(1180px,calc(100% - 40px));min-height:100%;margin-inline:auto;display:flex;flex-direction:column;justify-content:center}
+
+.hero-layout{display:grid;grid-template-columns:minmax(0,.88fr) minmax(500px,1.12fr);grid-template-areas:"copy visual" "stats stats";align-items:center;gap:26px 50px}
+.hero-copy{grid-area:copy;max-width:570px}
+.hero-copy h1{max-width:590px;margin:16px 0 0;text-wrap:balance}
+.hero-copy .body-lg{max-width:540px;margin:16px 0 0}
+.hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+.proof-line{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:18px;color:var(--muted);font-size:13px;line-height:20px}
+.proof-item{display:flex;align-items:center;gap:7px}
+.proof-item .icon{width:16px;height:16px;color:var(--accent-strong)}
+.stat-strip{grid-area:stats;display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:18px;background:rgba(11,21,38,.82);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);overflow:hidden}
+.stat{padding:14px 20px;border-right:1px solid var(--line)}
+.stat:last-child{border-right:0}
+.stat strong{display:block;font-size:20px;line-height:25px;letter-spacing:-.02em;color:var(--text)}
+.stat span{display:block;margin-top:3px;font-size:12px;line-height:16px;color:var(--muted)}
+
+.hero-visual{grid-area:visual;padding:7px;border:1px solid rgba(56,189,248,.22);border-radius:24px;background:rgba(15,29,53,.78);box-shadow:var(--shadow)}
+.app-window{overflow:hidden;border:1px solid rgba(56,189,248,.24);border-radius:var(--radius-lg);background:linear-gradient(155deg,#0f1d35,#081120);box-shadow:0 38px 90px -38px rgba(0,0,0,.96),inset 0 1px 0 rgba(255,255,255,.06)}
+.app-titlebar{height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+.titlebar-left{display:flex;align-items:center;gap:8px}
+.titlebar-left img{width:18px;height:18px;border-radius:4px}
+.app-title{font-size:11px;color:var(--soft);font-weight:600}
+.badge-pill{padding:2px 7px;border-radius:999px;font-size:9px;background:rgba(52,211,153,.14);color:var(--ok);border:1px solid rgba(52,211,153,.3)}
+.traffic{display:flex;gap:6px}.traffic i{width:8px;height:8px;border-radius:50%;background:#475569}
+.app-body{display:grid;grid-template-columns:112px 176px minmax(0,1fr);min-height:336px}
+.app-nav{border-right:1px solid var(--line);background:rgba(6,12,24,.55);padding:10px 8px;display:flex;flex-direction:column;gap:4px}
+.nav-chip{padding:6px 8px;border-radius:7px;font-size:10px;color:var(--muted)}
+.nav-chip.active{background:rgba(59,130,246,.2);color:#eff6ff;font-weight:600}
+.app-list{border-right:1px solid var(--line);background:rgba(9,17,32,.48);padding:10px 8px;display:flex;flex-direction:column;gap:6px}
+.list-head{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--soft);font-weight:600;padding:0 2px 4px;border-bottom:1px solid var(--line)}
+.entry-card{padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.025);font-size:10px}
+.entry-card.active{border-color:rgba(56,189,248,.65);background:rgba(56,189,248,.14)}
+.entry-card b{display:block;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry-card small{display:block;color:var(--muted);font-size:8px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-detail{padding:12px;display:flex;flex-direction:column;gap:8px;background:#070e1b}
+.detail-card{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(15,29,53,.45)}
+.detail-card h4{margin:0 0 8px;font-size:10px;color:var(--soft)}
+.kv{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid rgba(148,184,235,.08);font-size:9px}
+.kv span{color:var(--muted)}.kv code{color:var(--accent-strong);font-family:"SFMono-Regular",Consolas,monospace}
+
+.section-layout{display:flex;flex-direction:column;gap:24px}
+.section-heading{max-width:820px}
+.section-heading h2{margin:10px 0 0;text-wrap:balance}
+.section-heading p{margin:10px 0 0;max-width:700px}
+.benefit-grid,.platform-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.benefit-card,.platform-card{position:relative;padding:22px;border:1px solid var(--line);border-radius:var(--radius-lg);background:linear-gradient(145deg,rgba(21,39,68,.68),rgba(11,21,38,.88));box-shadow:inset 0 1px 0 rgba(255,255,255,.04);overflow:hidden}
+.benefit-card::after,.platform-card::after{content:"";position:absolute;width:120px;height:120px;right:-50px;top:-60px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.16),transparent 68%);pointer-events:none}
+.benefit-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.icon-box{display:grid;place-items:center;width:38px;height:38px;border:1px solid rgba(56,189,248,.24);border-radius:11px;background:rgba(59,130,246,.14);color:var(--accent-strong)}
+.icon-box .icon{width:20px;height:20px}
+.icon-box.gold{border-color:rgba(251,191,36,.24);background:rgba(251,191,36,.1);color:var(--gold)}
+.icon-box.cyan{border-color:rgba(34,211,238,.24);background:rgba(34,211,238,.1);color:var(--cyan)}
+.index-pill{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;padding:0 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font:600 10px/1 "SFMono-Regular",Consolas,monospace}
+.benefit-card h3,.platform-card h3{margin:0;font-size:18px;line-height:1.32;font-weight:650;letter-spacing:-.02em}
+.benefit-card p,.platform-card p{margin:8px 0 0;font-size:13px;line-height:1.65;color:var(--muted)}
+.card-caption{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:#bae6fd;font-size:11px;line-height:17px}
+.card-caption::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent-strong)}
+
+.feature-layout{display:grid;grid-template-columns:minmax(0,.84fr) minmax(480px,1.16fr);align-items:center;gap:50px}
+.feature-layout.reverse{grid-template-columns:minmax(480px,1.16fr) minmax(0,.84fr)}
+.feature-copy h2{margin:10px 0 0;text-wrap:balance}
+.feature-copy .body-lg{margin:12px 0 0}
+.feature-list{display:grid;gap:10px;margin:20px 0 0;padding:0;list-style:none}
+.feature-list li{display:flex;gap:9px;align-items:flex-start;color:var(--soft);font-size:13px;line-height:1.6}
+.feature-list .icon{width:16px;height:16px;margin-top:2px;color:var(--accent-strong)}
+.media-card{min-width:0;padding:8px;border:1px solid rgba(56,189,248,.18);border-radius:22px;background:linear-gradient(145deg,rgba(21,39,68,.7),rgba(9,17,32,.86));box-shadow:var(--shadow)}
+.media-card-inner{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#081120}
+.media-toolbar{height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--muted);font-size:10px}
+.media-dots{display:flex;gap:5px}.media-dots i{width:6px;height:6px;border-radius:50%;background:#334155}
+.diff-body{padding:14px;font:11px/1.8 "SFMono-Regular",Consolas,monospace;color:var(--soft)}
+.diff-add{color:var(--ok);background:rgba(52,211,153,.09);padding:1px 6px;border-radius:4px}
+.diff-del{color:var(--danger);background:rgba(251,113,133,.09);padding:1px 6px;border-radius:4px}
+
+.security-board{display:grid;grid-template-columns:1.08fr .92fr;gap:12px;min-height:330px}
+.security-stack{display:grid;grid-template-rows:repeat(3,1fr);gap:10px}
+.security-item{display:flex;align-items:flex-start;gap:12px;padding:15px;border:1px solid var(--line);border-radius:14px;background:rgba(15,29,53,.72)}
+.security-item .icon-box{width:32px;height:32px;flex:none}.security-item .icon-box .icon{width:17px;height:17px}
+.security-item h3{margin:0;font-size:14px;font-weight:650}.security-item p{margin:4px 0 0;font-size:11px;line-height:1.55;color:var(--muted)}
+.cipher-panel{position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:20px;border:1px solid var(--line);border-radius:16px;background:radial-gradient(circle at 72% 15%,rgba(56,189,248,.16),transparent 40%),rgba(7,14,27,.86);overflow:hidden}
+.cipher-title{font-size:10px;font-weight:650;letter-spacing:.1em;color:var(--accent-strong)}
+.cipher-list{display:grid;gap:10px}
+.cipher-row{display:flex;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line);font-size:11px}
+.cipher-row:last-child{border-bottom:0}.cipher-row span{color:var(--muted)}.cipher-row code{color:#e0f2fe;font:10px "SFMono-Regular",Consolas,monospace}
+
+.download-layout{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(420px,.98fr);gap:42px;align-items:center}
+.cta-panel{padding:28px;border:1px solid rgba(56,189,248,.22);border-radius:var(--radius-xl);background:radial-gradient(circle at 94% 4%,rgba(59,130,246,.2),transparent 38%),linear-gradient(145deg,rgba(21,39,68,.84),rgba(8,17,32,.92));box-shadow:var(--shadow)}
+.cta-panel h2{margin:12px 0 0;text-wrap:balance}
+.cta-panel p{max-width:560px;margin:12px 0 0;color:var(--muted);font-size:14px;line-height:1.7}
+.cta-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.cta-meta{display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:17px;color:var(--muted);font-size:12px}
+.cta-meta span{display:flex;align-items:center;gap:6px}.cta-meta .icon{width:14px;height:14px;color:var(--accent-strong)}
+.faq-list{display:grid;gap:8px}
+.faq-list details{border:1px solid var(--line);border-radius:13px;background:rgba(11,21,38,.76);overflow:hidden}
+.faq-list summary{position:relative;padding:14px 42px 14px 16px;color:#e2e8f0;font-size:13px;line-height:1.45;font-weight:600;cursor:pointer;list-style:none}
+.faq-list summary::-webkit-details-marker{display:none}
+.faq-list summary::after{content:"";position:absolute;right:17px;top:19px;width:7px;height:7px;border-right:1px solid var(--muted);border-bottom:1px solid var(--muted);transform:rotate(45deg);transition:transform .2s}
+.faq-list details[open] summary::after{transform:rotate(225deg);top:22px}
+.faq-list p{margin:0;padding:0 16px 15px;color:var(--muted);font-size:12px;line-height:1.65}
+
+.site-footer{position:relative;z-index:20;padding:6px 0;background:linear-gradient(to top,var(--bg),rgba(6,12,24,.96))}
+.progress-rail{position:absolute;left:0;right:0;top:0;height:1px;background:rgba(255,255,255,.06)}
+.progress-bar{display:block;width:100%;height:100%;background:linear-gradient(90deg,#2563eb,#06b6d4);transform:scaleX(.166);transform-origin:left;transition:transform .45s var(--curve)}
+.footer-inner{height:38px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.footer-brand{font-size:11px;letter-spacing:.03em;color:var(--muted)}
+.footer-hint{font-size:11px;color:#64748b}
+.deck-controls{display:flex;align-items:center;gap:9px}
+.icon-button{display:grid;place-items:center;width:31px;height:31px;padding:0;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.035);color:var(--soft);cursor:pointer;transition:background-color .2s,color .2s,border-color .2s}
+.icon-button:hover:not(:disabled){border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.14);color:var(--text)}
+.icon-button:disabled{opacity:.28;cursor:not-allowed}
+.icon-button .icon{width:16px;height:16px}.icon-button.prev .icon{transform:rotate(180deg)}
+.slide-counter{min-width:70px;text-align:center;font:11px "SFMono-Regular",Consolas,monospace;color:var(--muted)}
+.slide-counter strong{color:var(--text);font-weight:600}
+
+@media(max-width:1040px){
+  .heading-1{font-size:44px}.heading-2{font-size:34px}.heading-3{font-size:28px}
+  .hero-layout,.feature-layout,.feature-layout.reverse,.download-layout{grid-template-columns:1fr;gap:24px}
+  .hero-layout{grid-template-areas:"copy" "visual" "stats"}
+  .feature-layout.reverse .feature-copy{order:1}.feature-layout.reverse .media-card{order:2}
+}
+@media(max-width:860px){
+  html,body{height:auto;min-height:100%;overflow:auto}
+  body{display:block}
+  .site-header{position:sticky;top:0}
+  .nav-links,.nav-actions .github-link{display:none}.menu-toggle{display:grid}.mobile-menu{display:block}
+  .slide{position:relative;inset:auto;min-height:calc(100svh - 86px);opacity:1;visibility:visible;transform:none;pointer-events:auto;padding:24px 0 40px}
+  .js .slide:not(.is-active){display:none}.slide-inner{min-height:0;justify-content:flex-start}
+  .stat-strip,.benefit-grid,.platform-grid,.security-board{grid-template-columns:1fr}
+  .stat{border-right:0;border-bottom:1px solid var(--line)}.stat:last-child{border-bottom:0}
+  .site-footer{position:relative}.footer-hint{display:none}
+}
+</style>
+<noscript><style>html,body{height:auto;overflow:auto}body{display:block}.slide{position:relative;inset:auto;min-height:100vh;opacity:1;visibility:visible;transform:none;pointer-events:auto}.site-footer{position:sticky}</style></noscript>
 </head>
 <body>
+<a class="skip-link" href="#overview">跳到页面正文</a>
+
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 8 3v6c0 5.1-3.4 9.4-8 11-4.6-1.6-8-5.9-8-11V5l8-3Zm0 2.2L6 6.4V11c0 3.8 2.4 7.1 6 8.7 3.6-1.6 6-4.9 6-8.7V6.4l-6-2.2Zm-1 4h2v5h-2V8.2Zm0 6.5h2v2h-2v-2Z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1-9.8 12h2.1A8 8 0 1 0 6.3 7.7L9 10H2V3l3 3A9.9 9.9 0 0 1 12 2Zm-1 5h2v4.6l3 1.8-1 1.7-4-2.4V7Z"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.3c2.6 0 4.7-2.1 4.7-4.7C22 6.4 17.5 3 12 3ZM7.5 11a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m9.2 16.6-4.3-4.3L3.5 13.7l5.7 5.7L21 7.6l-1.4-1.4-10.4 10.4Z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="m13.2 5.2 6.8 6.8-6.8 6.8-1.4-1.4 4.4-4.4H4v-2h12.2l-4.4-4.4 1.4-1.4Z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M11 3h2v10l3-3 1.4 1.4L12 17l-5.4-5.6L8 10l3 3V3ZM4 19h16v2H4v-2Z"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 .8a11.2 11.2 0 0 0-3.5 21.8c.5.1.7-.2.7-.5v-2.1c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.5 1.1 1.5 1.1.9 1.5 2.4 1.1 3 .8.1-.7.4-1.1.7-1.4-2.2-.3-4.6-1.1-4.6-4.9 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.7.7 1 1.6 1 2.7 0 3.8-2.4 4.6-4.6 4.9.4.3.7.9.7 1.9V22c0 .3.2.6.7.5A11.2 11.2 0 0 0 12 .8Z"/></symbol>
+</svg>
+
+<header class="site-header">
   <div class="container">
-    <header>
-      <a class="brand" href="#">
-        <img src="assets/logo.svg" alt="Helmsman Logo" />
+    <div class="nav-bar">
+      <a class="brand" href="#overview" data-go="0">
+        <img src="assets/logo.svg" alt="Helmsman Logo">
         <span>Helmsman</span>
       </a>
-      <nav>
-        <a href="#features">核心特性</a>
-        <a href="#compare">方案对比</a>
-        <a href="https://github.com/mangerle/helmsman/releases">下载发行版</a>
-        <a href="https://github.com/mangerle/helmsman">GitHub</a>
+      <nav class="nav-links" aria-label="主导航">
+        <button class="nav-link" type="button" data-go="0" data-range="0" aria-current="page">概览</button>
+        <button class="nav-link" type="button" data-go="1" data-range="1">核心优势</button>
+        <button class="nav-link" type="button" data-go="2" data-range="2">菜单编排</button>
+        <button class="nav-link" type="button" data-go="3" data-range="3">特权隔离</button>
+        <button class="nav-link" type="button" data-go="4" data-range="4">主题外观</button>
+        <button class="nav-link" type="button" data-go="5" data-range="5">下载与 FAQ</button>
       </nav>
-    </header>
-
-    <section class="hero">
-      <h1>安全、无损、现代化的 Linux GRUB 管理工具</h1>
-      <p>Helmsman 采用 100% 纯安全 Rust 与 GPUI 构建，以特权分离架构、AST 语法保真引擎与原子快照回滚取代传统 Grub Customizer，让每次引导调整与内核升级都从容可靠。</p>
-      <div class="cta">
-        <a class="btn primary" href="https://github.com/mangerle/helmsman/releases/latest">下载最新版本 (.deb / .AppImage)</a>
-        <a class="btn" href="https://github.com/mangerle/helmsman">查看源码仓库</a>
+      <div class="nav-actions">
+        <a class="nav-icon github-link" href="https://github.com/mangerle/helmsman" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg class="icon"><use href="#i-github"/></svg></a>
+        <a class="button button-primary" href="#download" data-go="5">立即下载</a>
+        <button class="menu-toggle" type="button" aria-label="打开导航" aria-expanded="false"><span></span><span></span><span></span></button>
       </div>
-    </section>
-
-    <section id="features" class="grid">
-      <div class="card">
-        <h3>特权分离与 Polkit 鉴权</h3>
-        <p>桌面端以普通非特权用户运行，所有系统级写入均经由 D-Bus 系统总线与 PolicyKit 鉴权，按需激活后台守护进程。</p>
-      </div>
-      <div class="card">
-        <h3>无损引导排序</h3>
-        <p>绝不劫持 <code>/etc/grub.d/10_linux</code>。采用原生 <code>GRUB_DEFAULT</code> 语义索引与受管 <code>41_helmsman_custom</code> 脚本，兼容系统内核升级。</p>
-      </div>
-      <div class="card">
-        <h3>AST 语法保真回写</h3>
-        <p>将 <code>/etc/default/grub</code> 解析为抽象语法树，修改时 100% 保留原有注释、空白行、引号风格与键值顺序。</p>
-      </div>
-      <div class="card">
-        <h3>事务原子写入与快照回滚</h3>
-        <p>每次修改提供 Unified Diff 审核、影响分析、磁盘空间预检与自动快照备份，失败可一键秒级还原。</p>
-      </div>
-      <div class="card">
-        <h3>GRUB 主题安全管理</h3>
-        <p>支持本地压缩包导入与 HTTPS 在线下载，严格防范 Zip Slip 路径穿越与解压炸弹，内置壁纸与配色设置。</p>
-      </div>
-      <div class="card">
-        <h3>Ed25519 签名自更新</h3>
-        <p>集成 shipup 自更新与启动崩溃自动回滚机制，所有发布包均经 Ed25519 签名与 SHA-256 校验。</p>
-      </div>
-    </section>
-
-    <section id="compare">
-      <h2>Helmsman 与传统 Grub Customizer 对比</h2>
-      <table>
-        <thead>
-          <tr><th>维度</th><th>Grub Customizer</th><th>Helmsman</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>开发语言与内存安全</td><td>C++ (GTK3)</td><td>100% 纯安全 Rust (forbid unsafe)</td></tr>
-          <tr><td>权限模型</td><td>整个 GUI 以 root 身份运行</td><td>非特权 UI + Polkit / D-Bus 按需守护进程</td></tr>
-          <tr><td>内核升级兼容性</td><td>篡改 10_linux 易导致菜单损坏</td><td>零侵入原生脚本，完全透明兼容</td></tr>
-          <tr><td>配置回写</td><td>覆盖重写，丢失注释与排版</td><td>AST 语法保真，保留所有注释与引号风格</td></tr>
-          <tr><td>灾难恢复</td><td>缺乏事务保护与回滚</td><td>原子替换 + 自动快照 + 失败秒级回滚</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <footer>
-      Helmsman · 基于 Apache-2.0 协议开源 · <a href="https://github.com/mangerle/helmsman" style="color:inherit;">github.com/mangerle/helmsman</a>
-    </footer>
+    </div>
   </div>
+</header>
+
+<nav class="mobile-menu" id="mobileMenu" aria-label="移动导航" aria-hidden="true">
+  <button type="button" style="--i:0" data-go="0">概览</button>
+  <button type="button" style="--i:1" data-go="1">核心优势</button>
+  <button type="button" style="--i:2" data-go="2">菜单编排</button>
+  <button type="button" style="--i:3" data-go="3">特权隔离</button>
+  <button type="button" style="--i:4" data-go="4">主题外观</button>
+  <button type="button" style="--i:5" data-go="5">下载与 FAQ</button>
+</nav>
+
+<main class="deck" id="main" tabindex="-1">
+  <!-- 01 概览 -->
+  <section class="slide is-active" id="overview" aria-label="Helmsman 概览">
+    <div class="slide-inner">
+      <div class="hero-layout">
+        <div class="hero-copy">
+          <span class="kicker">100% 纯安全 Rust · GPUI 原生渲染</span>
+          <h1 class="heading-1"><span class="gradient-text">安全、无损、现代化的 Linux GRUB 控制台</span></h1>
+          <p class="body-lg">以特权分离架构、AST 保真解析与原子快照回滚取代老旧的 Grub Customizer。调整开机菜单、配置内核参数、安装 GRUB 主题，一切都在审核确认与灾备保护之下。</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#download" data-go="5"><svg class="icon" style="width:18px;height:18px"><use href="#i-download"/></svg>下载发行版</a>
+            <a class="button button-secondary" href="https://github.com/mangerle/helmsman" target="_blank" rel="noopener">查看 GitHub 源码</a>
+          </div>
+          <div class="proof-line">
+            <span class="proof-item"><svg class="icon"><use href="#i-check"/></svg>零 unsafe Rust 代码</span>
+            <span class="proof-item"><svg class="icon"><use href="#i-check"/></svg>Polkit 按需鉴权</span>
+            <span class="proof-item"><svg class="icon"><use href="#i-check"/></svg>支持主题在线下载</span>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="app-window">
+            <div class="app-titlebar">
+              <div class="titlebar-left">
+                <img src="assets/logo.svg" alt="Helmsman">
+                <span class="app-title">Helmsman · Linux GRUB 引导管理器</span>
+                <span class="badge-pill">已连接守护进程 (UEFI)</span>
+              </div>
+              <div class="traffic"><i></i><i></i><i></i></div>
+            </div>
+            <div class="app-body">
+              <div class="app-nav">
+                <div class="nav-chip active">启动项管理</div>
+                <div class="nav-chip">常规引导设置</div>
+                <div class="nav-chip">主题与外观</div>
+                <div class="nav-chip">快照与回滚</div>
+                <div class="nav-chip">更新与关于</div>
+              </div>
+              <div class="app-list">
+                <div class="list-head"><span>引导菜单</span><span>+ 新建</span></div>
+                <div class="entry-card active"><b>Ubuntu 24.04 LTS</b><small>默认 · gnulinux-simple</small></div>
+                <div class="entry-card"><b>Windows 11 专业版</b><small>已重命名 · EFI 引导</small></div>
+                <div class="entry-card"><b>Ubuntu Live ISO</b><small>子菜单: 更多系统与工具</small></div>
+                <div class="entry-card"><b>Linux 6.8.0-generic</b><small>子菜单: Advanced options</small></div>
+              </div>
+              <div class="app-detail">
+                <div class="detail-card">
+                  <h4>选中条目详情</h4>
+                  <div class="kv"><span>GRUB 菜单名称</span><code>Ubuntu 24.04 LTS</code></div>
+                  <div class="kv"><span>内核镜像</span><code>/boot/vmlinuz-6.8.0</code></div>
+                  <div class="kv"><span>根分区 UUID</span><code>9a84-21f0-c41b</code></div>
+                </div>
+                <div class="detail-card">
+                  <h4>快捷交互支持</h4>
+                  <div class="kv"><span>拖拽排序 / 右键菜单</span><code>已启用</code></div>
+                  <div class="kv"><span>键盘快捷键</span><code>↑ ↓ / Del / Ctrl+Z / Ctrl+S</code></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-strip">
+          <div class="stat"><strong>forbid(unsafe)</strong><span>全工作区禁用不安全指针操作，彻底杜绝内存越界</span></div>
+          <div class="stat"><strong>非破坏性编排</strong><span>不篡改 /etc/grub.d/10_linux 官方脚本，内核升级零冲突</span></div>
+          <div class="stat"><strong>原子快照 + 验签更新</strong><span>每次提交自动快照；Ed25519 验签自更新支持异常自动回滚</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 核心优势 -->
+  <section class="slide" id="benefits" aria-label="核心优势" aria-hidden="true">
+    <div class="slide-inner">
+      <div class="section-layout">
+        <div class="section-heading">
+          <span class="kicker">为什么选择 Helmsman</span>
+          <h2 class="heading-2">现代工程架构重构经典引导管理体验</h2>
+          <p class="body-lg">告别以 root 权限直接启动整个 GUI 的高危做法，也不再让 `apt upgrade` 升级内核后产生配置冲突。</p>
+        </div>
+        <div class="benefit-grid">
+          <div class="benefit-card">
+            <div class="benefit-top">
+              <div class="icon-box"><svg class="icon"><use href="#i-shield"/></svg></div>
+              <span class="index-pill">01</span>
+            </div>
+            <h3>特权分离与 Polkit 鉴权</h3>
+            <p>前端窗口以普通桌面用户身份运行；仅在提交变更或回滚快照时通过 D-Bus 唤醒按需特权守护进程。</p>
+            <span class="card-caption">最小权限边界 · 完整审计日志</span>
+          </div>
+          <div class="benefit-card">
+            <div class="benefit-top">
+              <div class="icon-box cyan"><svg class="icon"><use href="#i-palette"/></svg></div>
+              <span class="index-pill">02</span>
+            </div>
+            <h3>AST 保真与非破坏性编排</h3>
+            <p>修改 `/etc/default/grub` 时保留原有注释与引号风格；通过独立布局配置在 `update-grub` 后原子重排菜单。</p>
+            <span class="card-caption">支持排序 / 改名 / 子菜单 / 隐藏</span>
+          </div>
+          <div class="benefit-card">
+            <div class="benefit-top">
+              <div class="icon-box gold"><svg class="icon"><use href="#i-history"/></svg></div>
+              <span class="index-pill">03</span>
+            </div>
+            <h3>Diff 审核与自动回滚保护</h3>
+            <p>保存前自动分析变更影响并拦截危险配置（如 `timeout=0 + hidden`）；`grub-script-check` 不通过秒级回滚。</p>
+            <span class="card-caption">双缓冲草稿 · 历史快照一键还原</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 菜单编排与交互 -->
+  <section class="slide" id="entries" aria-label="菜单编排与交互" aria-hidden="true">
+    <div class="slide-inner">
+      <div class="feature-layout">
+        <div class="feature-copy">
+          <span class="kicker">启动项管理与新建向导</span>
+          <h2 class="heading-2">任意条目自由编排，像文件管理器一样顺手</h2>
+          <p class="body-lg">无论是系统探测出的 Ubuntu 内核、Windows Boot Manager，还是自定义的 Live ISO 与 EFI 链式加载条目，均可统一掌控。</p>
+          <ul class="feature-list">
+            <li><svg class="icon"><use href="#i-check"/></svg><span><b>拖拽排序与右键菜单</b>：按住任意引导项拖动调整顺序，或右键一键设为默认、移入/移出子菜单。</span></li>
+            <li><svg class="icon"><use href="#i-check"/></svg><span><b>树形折叠与回收站恢复</b>：子菜单可点击折叠；被移除条目暂存于下方列表，随时单条恢复。</span></li>
+            <li><svg class="icon"><use href="#i-check"/></svg><span><b>32 步撤销与快捷键</b>：支持 `Ctrl+Z` 撤销、`Ctrl+S` 审核保存、`Delete` 移除及 `↑/↓` 导航。</span></li>
+          </ul>
+        </div>
+        <div class="media-card">
+          <div class="media-card-inner">
+            <div class="media-toolbar">
+              <div class="media-dots"><i></i><i></i><i></i></div>
+              <span>变更影响分析与 Unified Diff 审核</span>
+              <span>+6 / -2 行</span>
+            </div>
+            <div class="diff-body">
+              <div class="diff-del">- GRUB_TIMEOUT=10</div>
+              <div class="diff-add">+ GRUB_TIMEOUT=5</div>
+              <div class="diff-del">- GRUB_CMDLINE_LINUX_DEFAULT="quiet"</div>
+              <div class="diff-add">+ GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"</div>
+              <div class="diff-add">+ GRUB_THEME="/boot/grub/themes/catppuccin-mocha/theme.txt"</div>
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted)">
+                [安全校验通过] 菜单可见且倒计时 &gt;= 3 秒，已自动创建提交前快照 snap-20261125-01。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 特权隔离与安全 -->
+  <section class="slide" id="security" aria-label="特权隔离" aria-hidden="true">
+    <div class="slide-inner">
+      <div class="feature-layout reverse">
+        <div class="security-board">
+          <div class="security-stack">
+            <div class="security-item">
+              <div class="icon-box"><svg class="icon"><use href="#i-shield"/></svg></div>
+              <div><h3>D-Bus + Polkit 权限控制</h3><p>读取与写入分离授权，不暴露无保护的特权接口。</p></div>
+            </div>
+            <div class="security-item">
+              <div class="icon-box cyan"><svg class="icon"><use href="#i-check"/></svg></div>
+              <div><h3>防注入与路径防穿越</h3><p>环境变量、自定义脚本参数与主题解压均严格校验边界。</p></div>
+            </div>
+            <div class="security-item">
+              <div class="icon-box gold"><svg class="icon"><use href="#i-history"/></svg></div>
+              <div><h3>包管理器互斥锁检测</h3><p>提交前自动检查 apt/dpkg/pacman 锁，避开系统更新竞态。</p></div>
+            </div>
+          </div>
+          <div class="cipher-panel">
+            <div class="cipher-title">HELMSMAN SAFETY CONTRACT</div>
+            <div class="cipher-list">
+              <div class="cipher-row"><span>内存安全</span><code>#![forbid(unsafe_code)]</code></div>
+              <div class="cipher-row"><span>进程模型</span><code>UI (UID 1000) ⇄ Daemon</code></div>
+              <div class="cipher-row"><span>语法验证</span><code>grub-script-check</code></div>
+              <div class="cipher-row"><span>主题限制</span><code>64 MiB + Zip Slip 防护</code></div>
+              <div class="cipher-row"><span>自更新验签</span><code>Ed25519 + SHA-256</code></div>
+            </div>
+          </div>
+        </div>
+        <div class="feature-copy">
+          <span class="kicker">安全工程设计</span>
+          <h2 class="heading-2">把“改坏无法开机”的风险关进笼子</h2>
+          <p class="body-lg">引导配置直接关系到系统能否启动。Helmsman 从解析器、IPC 契约到磁盘写入事务，每一层都内置强类型校验与原子回滚机制。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 主题与常规引导 -->
+  <section class="slide" id="themes" aria-label="主题外观" aria-hidden="true">
+    <div class="slide-inner">
+      <div class="section-layout">
+        <div class="section-heading">
+          <span class="kicker">常规设置与视觉主题</span>
+          <h2 class="heading-2">从系统参数微调到开机主题一键美化</h2>
+          <p class="body-lg">独立“常规引导设置”与“主题与视觉外观”双工作区，既能微调 `GRUB_DEFAULT=saved` 与任意环境变量，也能直接下载安装精选 GRUB 主题。</p>
+        </div>
+        <div class="platform-grid">
+          <div class="platform-card">
+            <h3>常规引导设置</h3>
+            <p>预定义默认项下拉框与 `saved` 记忆开关、等待倒计时步进器、`os-prober` 与 `quiet/splash/nomodeset` 快捷开关，以及 `/etc/default/grub` 高级变量编辑器。</p>
+            <span class="card-caption">完全对齐主流配置心智模型</span>
+          </div>
+          <div class="platform-card">
+            <h3>在线与本地 GRUB 主题</h3>
+            <p>内置 Catppuccin Mocha、Fallout、Poly Dark 等精选主题一键安装，支持自定义 HTTPS 归档直链与本地 `.zip`/`.tar.gz` 安全导入卸载。</p>
+            <span class="card-caption">自动校验 theme.txt 完整性</span>
+          </div>
+          <div class="platform-card">
+            <h3>16 色配色与实时模拟预览</h3>
+            <p>支持 `GRUB_GFXMODE` 下拉/手输、开机壁纸选择、GRUB 标准 16 色自由搭配，并可随时打开黑底终端预览倒计时效果。</p>
+            <span class="card-caption">跟随系统深浅色 + 4 档字体缩放</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 下载与 FAQ -->
+  <section class="slide" id="download" aria-label="下载与 FAQ" aria-hidden="true">
+    <div class="slide-inner">
+      <div class="download-layout">
+        <div class="cta-panel">
+          <span class="kicker">开源发布 · Apache-2.0 / MIT</span>
+          <h2 class="heading-3">获取适用于 Linux 桌面的 Helmsman</h2>
+          <p>提供 Debian/Ubuntu `.deb` 安装包、通用 `.AppImage` 以及 `helmsman-daemon` 守护进程归档，内置基于 `shipup` 的签名自更新支持。</p>
+          <div class="cta-actions">
+            <a class="button button-primary" href="https://github.com/mangerle/helmsman/releases/latest" target="_blank" rel="noopener"><svg class="icon" style="width:18px;height:18px"><use href="#i-download"/></svg>前往 Releases 下载</a>
+            <a class="button button-secondary" href="https://github.com/mangerle/helmsman" target="_blank" rel="noopener">GitHub 仓库</a>
+          </div>
+          <div class="cta-meta">
+            <span><svg class="icon"><use href="#i-check"/></svg>Wayland / X11 原生 GPU 加速</span>
+            <span><svg class="icon"><use href="#i-check"/></svg>支持 Debian / Ubuntu / Arch / Fedora</span>
+          </div>
+        </div>
+        <div class="faq-list">
+          <details open>
+            <summary>和 Grub Customizer 的最大区别是什么？</summary>
+            <p>Helmsman 采用非特权 GUI + Polkit 守护进程，且不覆写 `/etc/grub.d/10_linux` 等系统官方脚本，每次提交都有 Diff 审核、语法检查与历史快照秒级回滚。</p>
+          </details>
+          <details>
+            <summary>修改顺序或名称后，系统升级内核会失效吗？</summary>
+            <p>不会。用户编排规则保存在独立的 `menu_layout.json` 中，系统或本工具每次执行 `update-grub` 后都会自动非破坏性地重排菜单结构。</p>
+          </details>
+          <details>
+            <summary>桌面端应用内自动更新安全吗？</summary>
+            <p>内置的 `shipup` 更新器会强制校验远端清单的 Ed25519 签名与安装包 SHA-256 哈希；若新版本连续启动失败，还会自动回滚至上一稳定版本。</p>
+          </details>
+          <details>
+            <summary>没有安装守护进程时可以试用界面吗？</summary>
+            <p>可以。未检测到 `helmsman-daemon` D-Bus 服务时，应用会自动进入只读演示模式，可完整体验全量交互与模拟预览，不会触碰真实磁盘。</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="progress-rail" aria-hidden="true"><i class="progress-bar" id="progressBar"></i></div>
+  <div class="container footer-inner">
+    <span class="footer-brand">Helmsman · Rust + GPUI · 特权分离引导控制台</span>
+    <span class="footer-hint">滚轮、方向键或触摸切换介绍</span>
+    <div class="deck-controls">
+      <button class="icon-button prev" id="prevSlide" type="button" aria-label="上一页"><svg class="icon"><use href="#i-arrow"/></svg></button>
+      <span class="slide-counter"><strong id="currentSlide">01</strong> / <span id="totalSlides">06</span></span>
+      <button class="icon-button next" id="nextSlide" type="button" aria-label="下一页"><svg class="icon"><use href="#i-arrow"/></svg></button>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var deck = document.getElementById('main');
+  var progressBar = document.getElementById('progressBar');
+  var currentLabel = document.getElementById('currentSlide');
+  var totalLabel = document.getElementById('totalSlides');
+  var prevButton = document.getElementById('prevSlide');
+  var nextButton = document.getElementById('nextSlide');
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('.nav-link'));
+  var goButtons = Array.prototype.slice.call(document.querySelectorAll('[data-go]'));
+  var menuButton = document.querySelector('.menu-toggle');
+  var mobileMenu = document.getElementById('mobileMenu');
+  var current = 0;
+  var wheelTotal = 0;
+  var wheelLocked = false;
+  var wheelIdleTimer = 0;
+  var touchStartY = 0;
+  var touchStartX = 0;
+
+  totalLabel.textContent = String(slides.length).padStart(2,'0');
+
+  function updateNavigation(){
+    navLinks.forEach(function(link){
+      if(Number(link.getAttribute('data-range')) === current) link.setAttribute('aria-current','page');
+      else link.removeAttribute('aria-current');
+    });
+    currentLabel.textContent = String(current + 1).padStart(2,'0');
+    progressBar.style.transform = 'scaleX(' + ((current + 1) / slides.length) + ')';
+    prevButton.disabled = current === 0;
+    nextButton.disabled = current === slides.length - 1;
+  }
+
+  function goTo(index, focusDeck){
+    var target = Math.max(0,Math.min(slides.length - 1,index));
+    if(target === current){
+      if(focusDeck) deck.focus({preventScroll:true});
+      return false;
+    }
+    slides[current].classList.remove('is-active');
+    slides[current].classList.add('is-before');
+    slides[current].setAttribute('aria-hidden','true');
+    slides[current].inert = true;
+    current = target;
+    slides[current].classList.remove('is-before');
+    slides[current].classList.add('is-active');
+    slides[current].setAttribute('aria-hidden','false');
+    slides[current].inert = false;
+    slides[current].scrollTop = 0;
+    updateNavigation();
+    if(window.history && window.history.replaceState){
+      window.history.replaceState(null,'','#' + slides[current].id);
+    }
+    if(focusDeck) deck.focus({preventScroll:true});
+    return true;
+  }
+
+  function closeMenu(){
+    document.body.classList.remove('menu-open');
+    menuButton.setAttribute('aria-expanded','false');
+    mobileMenu.setAttribute('aria-hidden','true');
+  }
+
+  menuButton.addEventListener('click',function(){
+    var open = !document.body.classList.contains('menu-open');
+    document.body.classList.toggle('menu-open',open);
+    menuButton.setAttribute('aria-expanded',String(open));
+    mobileMenu.setAttribute('aria-hidden',String(!open));
+  });
+
+  goButtons.forEach(function(button){
+    button.addEventListener('click',function(event){
+      event.preventDefault();
+      goTo(Number(button.getAttribute('data-go')),true);
+      closeMenu();
+    });
+  });
+
+  prevButton.addEventListener('click',function(){ goTo(current - 1,true); });
+  nextButton.addEventListener('click',function(){ goTo(current + 1,true); });
+
+  function slideCanScroll(direction){
+    var slide = slides[current];
+    if(slide.scrollHeight <= slide.clientHeight + 2) return false;
+    if(direction > 0) return slide.scrollTop + slide.clientHeight < slide.scrollHeight - 2;
+    return slide.scrollTop > 2;
+  }
+
+  deck.addEventListener('wheel',function(event){
+    if(wheelLocked){ event.preventDefault(); return; }
+    if(slideCanScroll(event.deltaY)) return;
+    event.preventDefault();
+    wheelTotal += event.deltaY;
+    window.clearTimeout(wheelIdleTimer);
+    wheelIdleTimer = window.setTimeout(function(){ wheelTotal = 0; },160);
+    if(Math.abs(wheelTotal) < 42) return;
+    goTo(current + (wheelTotal > 0 ? 1 : -1),false);
+    wheelTotal = 0;
+    wheelLocked = true;
+    window.setTimeout(function(){ wheelLocked = false; },220);
+  },{passive:false});
+
+  document.addEventListener('keydown',function(event){
+    if(event.key === 'Escape' && document.body.classList.contains('menu-open')){ closeMenu(); return; }
+    if(document.body.classList.contains('menu-open')) return;
+    if(event.target.closest && event.target.closest('a,button,summary,details,input')) return;
+    if(['ArrowDown','PageDown',' '].indexOf(event.key) !== -1){ event.preventDefault(); goTo(current + 1,false); }
+    else if(['ArrowUp','PageUp'].indexOf(event.key) !== -1){ event.preventDefault(); goTo(current - 1,false); }
+    else if(event.key === 'Home'){ event.preventDefault(); goTo(0,false); }
+    else if(event.key === 'End'){ event.preventDefault(); goTo(slides.length - 1,false); }
+  });
+
+  deck.addEventListener('touchstart',function(event){
+    if(event.touches.length !== 1) return;
+    touchStartY = event.touches[0].clientY;
+    touchStartX = event.touches[0].clientX;
+  },{passive:true});
+
+  deck.addEventListener('touchend',function(event){
+    if(event.changedTouches.length !== 1) return;
+    var deltaY = touchStartY - event.changedTouches[0].clientY;
+    var deltaX = touchStartX - event.changedTouches[0].clientX;
+    if(Math.abs(deltaY) < 56 || Math.abs(deltaY) <= Math.abs(deltaX)) return;
+    if(slideCanScroll(deltaY)) return;
+    goTo(current + (deltaY > 0 ? 1 : -1),false);
+  },{passive:true});
+
+  var hashIndex = slides.findIndex(function(slide){ return '#' + slide.id === window.location.hash; });
+  if(hashIndex > 0){
+    slides[0].classList.remove('is-active');
+    slides[0].setAttribute('aria-hidden','true');
+    slides[0].inert = true;
+    current = hashIndex;
+    slides[current].classList.add('is-active');
+    slides[current].setAttribute('aria-hidden','false');
+    slides[current].inert = false;
+  }
+  updateNavigation();
+})();
+</script>
 </body>
 </html>
