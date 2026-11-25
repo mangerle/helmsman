@@ -11,6 +11,7 @@ use grub_transaction_engine::{
 };
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 
 /// 事务应用选项配置
 #[derive(Debug, Clone, Default)]
@@ -48,9 +49,18 @@ pub struct GrubService {
     pub lock_descriptors: Vec<LockDescriptor>,
     /// 主题存放根目录
     pub themes_dir: PathBuf,
+    /// 进程内写操作互斥锁（串行化磁盘写入、快照与引导重建，防止并发竞态）
+    write_lock: Mutex<()>,
 }
 
 impl GrubService {
+    /// 获取写操作互斥锁（仅在同步事务内持有，严禁跨 await 持有）
+    pub(crate) fn acquire_write_lock(&self) -> MutexGuard<'_, ()> {
+        self.write_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// 创建标准系统服务实例
     pub fn new_system_default() -> Self {
         let distro_profile = DistroProfile::detect_current_system();
@@ -61,6 +71,7 @@ impl GrubService {
             distro_profile,
             lock_descriptors: default_system_locks(),
             themes_dir,
+            write_lock: Mutex::new(()),
         }
     }
 
@@ -77,6 +88,7 @@ impl GrubService {
             distro_profile,
             lock_descriptors: Vec::new(),
             themes_dir,
+            write_lock: Mutex::new(()),
         }
     }
 

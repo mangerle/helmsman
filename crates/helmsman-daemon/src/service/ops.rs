@@ -115,6 +115,7 @@ impl GrubService {
         theme_name: Option<&str>,
         caller_uid: u32,
     ) -> Result<PathBuf, DaemonError> {
+        let _write_guard = self.acquire_write_lock();
         let start_time = Instant::now();
         Self::validate_theme_archive_source(archive_path, caller_uid).inspect_err(|e| {
             let err_msg = e.to_string();
@@ -178,6 +179,7 @@ impl GrubService {
         snapshot_id: &str,
         caller_uid: u32,
     ) -> Result<(), DaemonError> {
+        let _write_guard = self.acquire_write_lock();
         let start_time = Instant::now();
         let res = (|| -> Result<(), DaemonError> {
             let snapshots =
@@ -261,6 +263,7 @@ impl GrubService {
     /// # Errors
     /// 名称非法、路径穿越或删除失败时返回对应的 [`DaemonError`]。
     pub fn remove_theme_as(&self, theme_name: &str, caller_uid: u32) -> Result<(), DaemonError> {
+        let _write_guard = self.acquire_write_lock();
         let start_time = Instant::now();
         let res = remove_theme(&self.themes_dir, theme_name).map_err(|e| {
             DaemonError::ThemeInstallFailed {
@@ -297,6 +300,7 @@ impl GrubService {
         snapshot_id: &str,
         caller_uid: u32,
     ) -> Result<(), DaemonError> {
+        let _write_guard = self.acquire_write_lock();
         let start_time = Instant::now();
         let res = delete_snapshot(&self.backup_dir, snapshot_id).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -426,6 +430,7 @@ impl GrubService {
     /// # Errors
     /// 当备份目录读取或删除失败时返回 [`DaemonError::SnapshotListFailed`]。
     pub fn prune_snapshot_history(&self, max_keep: usize) -> Result<usize, DaemonError> {
+        let _write_guard = self.acquire_write_lock();
         prune_snapshots(&self.backup_dir, max_keep).map_err(|e| DaemonError::SnapshotListFailed {
             reason: format!("裁剪历史快照失败（保留上限 {max_keep}）: {e}"),
         })
@@ -437,7 +442,11 @@ impl GrubService {
     /// - **实现初衷**：`grub-set-default` 只写 grubenv 的 `saved_entry`，若 `GRUB_DEFAULT` 仍为
     ///   数字索引或固定标题则切换不会生效。必须先原子切换到 saved 模式再写入目标项。
     /// - **核心优势**：复用既有事务（快照 + 原子写 + 引导重建），失败可回滚。
-    fn ensure_saved_default_mode(&self, options: &TransactionOptions) -> Result<(), DaemonError> {
+    fn ensure_saved_default_mode(
+        &self,
+        options: &TransactionOptions,
+        caller_uid: u32,
+    ) -> Result<(), DaemonError> {
         let current = fs::read_to_string(&self.default_config_path).map_err(|e| {
             DaemonError::ConfigReadFailed {
                 path: self.default_config_path.clone(),
@@ -454,11 +463,11 @@ impl GrubService {
         config.set("GRUB_SAVEDEFAULT", "true");
         let new_config = config.serialize();
 
-        let result = self.apply_changes_as(
+        let result = self.apply_changes_unlocked(
             &new_config,
             "自动启用 saved 记忆模式以支持快速切换默认项",
             options,
-            resolve_caller_uid(),
+            caller_uid,
         )?;
 
         if !result.success {
@@ -492,6 +501,7 @@ impl GrubService {
         entry_id_or_title: &str,
         caller_uid: u32,
     ) -> Result<(), DaemonError> {
+        let _write_guard = self.acquire_write_lock();
         let start_time = Instant::now();
         let res = (|| -> Result<(), DaemonError> {
             check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
@@ -503,7 +513,7 @@ impl GrubService {
             debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
 
             // grub-set-default 仅在 GRUB_DEFAULT=saved 时生效，必要时先切换到记忆模式
-            self.ensure_saved_default_mode(&TransactionOptions::default())?;
+            self.ensure_saved_default_mode(&TransactionOptions::default(), caller_uid)?;
 
             let cmd = SafeCommand::new(&self.distro_profile.set_default_command)
                 .and_then(|c| c.arg(entry_id_or_title))

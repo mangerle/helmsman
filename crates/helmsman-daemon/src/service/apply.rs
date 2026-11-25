@@ -38,6 +38,18 @@ impl GrubService {
         options: &TransactionOptions,
         caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
+        let _write_guard = self.acquire_write_lock();
+        self.apply_changes_unlocked(new_config, reason, options, caller_uid)
+    }
+
+    /// 无锁版本的配置提交事务（供已持有 `write_lock` 的内部流程复用，防止重入死锁）
+    pub(crate) fn apply_changes_unlocked(
+        &self,
+        new_config: &str,
+        reason: &str,
+        options: &TransactionOptions,
+        caller_uid: u32,
+    ) -> Result<TransactionResult, DaemonError> {
         let start_time = Instant::now();
         let diff_summary = fs::read_to_string(&self.default_config_path)
             .ok()

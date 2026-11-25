@@ -7,6 +7,7 @@ use grub_transaction_engine::{
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
@@ -30,15 +31,25 @@ pub struct CustomManager {
     pub aliases_path: PathBuf,
     /// 备份根目录
     pub backup_dir: PathBuf,
+    /// 进程内写操作互斥锁（锁序先于 GrubService::write_lock，防止并发写竞态与死锁）
+    write_lock: Mutex<()>,
 }
 
 impl CustomManager {
+    /// 获取写操作互斥锁（仅在同步事务内持有）
+    fn acquire_write_lock(&self) -> MutexGuard<'_, ()> {
+        self.write_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// 创建基于系统默认路径的管理器实例
     pub fn new_system_default() -> Self {
         Self {
             custom_script_path: PathBuf::from(DEFAULT_CUSTOM_SCRIPT_PATH),
             aliases_path: PathBuf::from(DEFAULT_ALIASES_PATH),
             backup_dir: PathBuf::from("/var/backups/grub-manager"),
+            write_lock: Mutex::new(()),
         }
     }
 
@@ -52,6 +63,7 @@ impl CustomManager {
             custom_script_path,
             aliases_path,
             backup_dir,
+            write_lock: Mutex::new(()),
         }
     }
 
@@ -104,6 +116,7 @@ impl CustomManager {
         options: &TransactionOptions,
         caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
+        let _custom_guard = self.acquire_write_lock();
         let start_time = Instant::now();
         // 冲突检测 + 字段校验 + 脚本结构校验，任一失败均不落盘
         let new_script_content =
@@ -292,6 +305,7 @@ impl CustomManager {
     /// 当条目 ID 或显示名含非法字符、超长，或已有别名表损坏不可读时返回对应 [`DaemonError`]。
     pub fn set_alias(&self, entry_id: &str, alias: &str) -> Result<(), DaemonError> {
         validate_alias_binding(entry_id, alias)?;
+        let _custom_guard = self.acquire_write_lock();
 
         let mut aliases = self.try_load_aliases()?;
         let trimmed_alias = alias.trim();
