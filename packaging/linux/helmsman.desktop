@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Helmsman
+GenericName=GRUB 引导配置管理器
+Comment=基于纯 Rust 打造的现代化、内存安全且可靠的 Linux GRUB 引导管理工具
+Exec=helmsman-app
+Icon=helmsman
+Terminal=false
+Categories=System;Settings;
+Keywords=GRUB;Bootloader;Boot;Linux;
+StartupNotify=true
