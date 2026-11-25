@@ -1,5 +1,5 @@
 use std::env;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::info;
 
 /// 审计事件操作类型
@@ -84,6 +84,38 @@ pub fn record_audit_event(event: &AuditEvent) {
         if event.success { "成功" } else { "失败" },
         event.duration.as_millis()
     );
+}
+
+/// 执行带结构化审计计时的特权操作，统一记录耗时与结果
+pub fn with_audit<T, E, F, S>(
+    caller_uid: u32,
+    action: AuditAction,
+    reason: impl Into<String>,
+    snapshot_id: Option<String>,
+    diff_summary: Option<String>,
+    extract_meta: S,
+    op: F,
+) -> Result<T, E>
+where
+    F: FnOnce() -> Result<T, E>,
+    S: FnOnce(&T) -> (bool, Option<String>),
+{
+    let start_time = Instant::now();
+    let res = op();
+    let (success, dyn_snapshot) = match &res {
+        Ok(val) => extract_meta(val),
+        Err(_) => (false, None),
+    };
+    record_audit_event(&AuditEvent {
+        caller_uid,
+        action,
+        reason: reason.into(),
+        snapshot_id: dyn_snapshot.or(snapshot_id),
+        success,
+        duration: start_time.elapsed(),
+        diff_summary,
+    });
+    res
 }
 
 /// 解析调用方的真实用户 UID（进程环境回退路径）

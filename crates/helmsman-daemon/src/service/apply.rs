@@ -1,4 +1,4 @@
-use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
+use crate::audit::{AuditAction, resolve_caller_uid, with_audit};
 use crate::service::apply_support::execute_update_with_rollback;
 use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
 use grub_transaction_engine::{
@@ -7,7 +7,6 @@ use grub_transaction_engine::{
 };
 use std::fs;
 use std::path::Path;
-use std::time::Instant;
 use tracing::{debug, info};
 
 /// 事务执行与配置提交相关实现
@@ -50,42 +49,22 @@ impl GrubService {
         options: &TransactionOptions,
         caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
-        let start_time = Instant::now();
         let diff_summary = fs::read_to_string(&self.default_config_path)
             .ok()
             .map(|orig| {
                 let diff = generate_unified_diff(&orig, new_config);
-                let added = diff
-                    .diff_text
-                    .lines()
-                    .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
-                    .count();
-                let removed = diff
-                    .diff_text
-                    .lines()
-                    .filter(|l| l.starts_with('-') && !l.starts_with("---"))
-                    .count();
-                format!("+{} / -{}", added, removed)
+                format!("+{} / -{}", diff.added_lines, diff.removed_lines)
             });
 
-        let res = self.run_apply_transaction(new_config, reason, options);
-
-        let (success, snapshot_id) = match &res {
-            Ok(r) => (r.success, Some(r.snapshot_id.clone())),
-            Err(_) => (false, None),
-        };
-
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::ApplyChanges,
-            reason: reason.to_string(),
-            snapshot_id,
-            success,
-            duration: start_time.elapsed(),
+            AuditAction::ApplyChanges,
+            reason,
+            None,
             diff_summary,
-        });
-
-        res
+            |r: &TransactionResult| (r.success, Some(r.snapshot_id.clone())),
+            || self.run_apply_transaction(new_config, reason, options),
+        )
     }
 
     /// 执行快照、原子写入与引导更新的核心事务流程

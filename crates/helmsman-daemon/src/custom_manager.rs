@@ -1,4 +1,4 @@
-use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
+use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid, with_audit};
 use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
 use grub_boot_reader::{CustomBootEntry, generate_custom_script, parse_custom_script};
 use grub_transaction_engine::{
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::{debug, info};
 
 /// 默认的受管自定义脚本路径
@@ -117,120 +117,115 @@ impl CustomManager {
         caller_uid: u32,
     ) -> Result<TransactionResult, DaemonError> {
         let _custom_guard = self.acquire_write_lock();
-        let start_time = Instant::now();
         // 冲突检测 + 字段校验 + 脚本结构校验，任一失败均不落盘
         let new_script_content =
             generate_custom_script(entries).map_err(|e| DaemonError::CustomEntryInvalid {
                 reason: e.to_string(),
             })?;
 
-        let res = (|| -> Result<TransactionResult, DaemonError> {
-            // 确保父目录存在
-            if let Some(parent) = self.custom_script_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| DaemonError::AtomicWriteFailed {
-                    reason: format!("创建目录 '{}' 失败: {}", parent.display(), e),
-                })?;
-            }
-
-            // 检查可用磁盘空间
-            check_disk_space(&self.custom_script_path, 10 * 1024 * 1024)
-                .map_err(DaemonError::DiskSpaceInsufficient)?;
-
-            // 若已有文件则创建快照，失败或更新失败时用于回滚自定义脚本本身
-            let mut script_snapshot = None;
-            let snapshot_id = if self.custom_script_path.exists() {
-                let snapshot = create_snapshot(&self.custom_script_path, &self.backup_dir, reason)
-                    .map_err(|e| DaemonError::SnapshotFailed {
-                        reason: e.to_string(),
-                    })?;
-                // 有界保留快照，防止备份目录无限膨胀
-                if let Err(e) = prune_snapshots(&self.backup_dir, 20) {
-                    tracing::warn!("裁剪历史快照失败，原因: {}", e);
-                }
-                let id = snapshot.id.clone();
-                script_snapshot = Some(snapshot);
-                id
-            } else {
-                "initial_custom_created".to_string()
-            };
-
-            // 原子替换写入
-            if let Err(e) = atomic_write(&self.custom_script_path, &new_script_content) {
-                return Err(DaemonError::AtomicWriteFailed {
-                    reason: e.to_string(),
-                });
-            }
-
-            // 在 Unix 平台下确保可执行权限 (0755)
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let permissions = fs::Permissions::from_mode(0o755);
-                if let Err(e) = fs::set_permissions(&self.custom_script_path, permissions) {
-                    rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
-                    return Err(DaemonError::AtomicWriteFailed {
-                        reason: format!(
-                            "设置自定义脚本可执行权限失败 '{}': {}",
-                            self.custom_script_path.display(),
-                            e
-                        ),
-                    });
-                }
-            }
-
-            info!(
-                "自定义引导脚本写入成功: {}，条目数: {}",
-                self.custom_script_path.display(),
-                entries.len()
-            );
-
-            if options.skip_command_execution {
-                return Ok(TransactionResult {
-                    success: true,
-                    snapshot_id,
-                    log_output: "跳过引导更新命令执行（测试模式）".to_string(),
-                    error_message: None,
-                });
-            }
-
-            // 读取当前 /etc/default/grub，禁止吞错传空串以免覆盖系统配置
-            let default_cfg_content = match fs::read_to_string(&service.default_config_path) {
-                Ok(content) => content,
-                Err(e) => {
-                    rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
-                    return Err(DaemonError::ConfigReadFailed {
-                        path: service.default_config_path.clone(),
-                        reason: e.to_string(),
-                    });
-                }
-            };
-
-            // 若不需要跳过则触发引导更新（沿用调用方 UID 以保持审计一致）
-            let update_res =
-                service.apply_changes_as(&default_cfg_content, reason, options, caller_uid);
-
-            // 引导更新失败时回滚自定义脚本，避免磁盘脚本与生成的 grub.cfg 不一致
-            match update_res {
-                Ok(result) => Ok(result),
-                Err(err) => {
-                    rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
-                    Err(err)
-                }
-            }
-        })();
-
-        let success = res.as_ref().map(|r| r.success).unwrap_or(false);
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::ApplyCustomEntries,
-            reason: format!("更新自定义条目: {}", reason),
-            snapshot_id: res.as_ref().ok().map(|r| r.snapshot_id.clone()),
-            success,
-            duration: start_time.elapsed(),
-            diff_summary: Some(format!("条目数: {}", entries.len())),
-        });
+            AuditAction::ApplyCustomEntries,
+            format!("更新自定义条目: {}", reason),
+            None,
+            Some(format!("条目数: {}", entries.len())),
+            |r: &TransactionResult| (r.success, Some(r.snapshot_id.clone())),
+            || -> Result<TransactionResult, DaemonError> {
+                // 确保父目录存在
+                if let Some(parent) = self.custom_script_path.parent() {
+                    fs::create_dir_all(parent).map_err(|e| DaemonError::AtomicWriteFailed {
+                        reason: format!("创建目录 '{}' 失败: {}", parent.display(), e),
+                    })?;
+                }
 
-        res
+                // 检查可用磁盘空间
+                check_disk_space(&self.custom_script_path, 10 * 1024 * 1024)
+                    .map_err(DaemonError::DiskSpaceInsufficient)?;
+
+                // 若已有文件则创建快照，失败或更新失败时用于回滚自定义脚本本身
+                let mut script_snapshot = None;
+                let snapshot_id = if self.custom_script_path.exists() {
+                    let snapshot =
+                        create_snapshot(&self.custom_script_path, &self.backup_dir, reason)
+                            .map_err(|e| DaemonError::SnapshotFailed {
+                                reason: e.to_string(),
+                            })?;
+                    // 有界保留快照，防止备份目录无限膨胀
+                    if let Err(e) = prune_snapshots(&self.backup_dir, 20) {
+                        tracing::warn!("裁剪历史快照失败，原因: {}", e);
+                    }
+                    let id = snapshot.id.clone();
+                    script_snapshot = Some(snapshot);
+                    id
+                } else {
+                    "initial_custom_created".to_string()
+                };
+
+                // 原子替换写入
+                if let Err(e) = atomic_write(&self.custom_script_path, &new_script_content) {
+                    return Err(DaemonError::AtomicWriteFailed {
+                        reason: e.to_string(),
+                    });
+                }
+
+                // 在 Unix 平台下确保可执行权限 (0755)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let permissions = fs::Permissions::from_mode(0o755);
+                    if let Err(e) = fs::set_permissions(&self.custom_script_path, permissions) {
+                        rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
+                        return Err(DaemonError::AtomicWriteFailed {
+                            reason: format!(
+                                "设置自定义脚本可执行权限失败 '{}': {}",
+                                self.custom_script_path.display(),
+                                e
+                            ),
+                        });
+                    }
+                }
+
+                info!(
+                    "自定义引导脚本写入成功: {}，条目数: {}",
+                    self.custom_script_path.display(),
+                    entries.len()
+                );
+
+                if options.skip_command_execution {
+                    return Ok(TransactionResult {
+                        success: true,
+                        snapshot_id,
+                        log_output: "跳过引导更新命令执行（测试模式）".to_string(),
+                        error_message: None,
+                    });
+                }
+
+                // 读取当前 /etc/default/grub，禁止吞错传空串以免覆盖系统配置
+                let default_cfg_content = match fs::read_to_string(&service.default_config_path) {
+                    Ok(content) => content,
+                    Err(e) => {
+                        rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
+                        return Err(DaemonError::ConfigReadFailed {
+                            path: service.default_config_path.clone(),
+                            reason: e.to_string(),
+                        });
+                    }
+                };
+
+                // 若不需要跳过则触发引导更新（沿用调用方 UID 以保持审计一致）
+                let update_res =
+                    service.apply_changes_as(&default_cfg_content, reason, options, caller_uid);
+
+                // 引导更新失败时回滚自定义脚本，避免磁盘脚本与生成的 grub.cfg 不一致
+                match update_res {
+                    Ok(result) => Ok(result),
+                    Err(err) => {
+                        rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
+                        Err(err)
+                    }
+                }
+            },
+        )
     }
 
     /// 删除指定自定义引导项并落盘（仅限受管自定义项）

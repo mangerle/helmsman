@@ -1,4 +1,4 @@
-use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid};
+use crate::audit::{AuditAction, resolve_caller_uid, with_audit};
 use crate::executor::SafeCommand;
 use crate::service::{DaemonError, GrubService, TransactionOptions};
 use grub_config_parser::parse_grub_config;
@@ -9,7 +9,6 @@ use grub_transaction_engine::{
 };
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 use tracing::{debug, info};
 
 /// 主题安装、快照回滚与默认项切换等系统运维操作
@@ -116,50 +115,26 @@ impl GrubService {
         caller_uid: u32,
     ) -> Result<PathBuf, DaemonError> {
         let _write_guard = self.acquire_write_lock();
-        let start_time = Instant::now();
-        Self::validate_theme_archive_source(archive_path, caller_uid).inspect_err(|e| {
-            let err_msg = e.to_string();
-            record_audit_event(&AuditEvent {
-                caller_uid,
-                action: AuditAction::InstallTheme,
-                reason: format!("主题安装路径校验失败: {}", err_msg),
-                snapshot_id: None,
-                success: false,
-                duration: start_time.elapsed(),
-                diff_summary: None,
-            });
-        })?;
-
-        let installed = grub_transaction_engine::install_theme_from_archive(
-            archive_path,
-            &self.themes_dir,
-            theme_name,
-        )
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            record_audit_event(&AuditEvent {
-                caller_uid,
-                action: AuditAction::InstallTheme,
-                reason: format!("主题安装失败: {}", err_msg),
-                snapshot_id: None,
-                success: false,
-                duration: start_time.elapsed(),
-                diff_summary: None,
-            });
-            DaemonError::ThemeInstallFailed { reason: err_msg }
-        })?;
-
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::InstallTheme,
-            reason: format!("成功从压缩包安装主题至: {}", installed.display()),
-            snapshot_id: None,
-            success: true,
-            duration: start_time.elapsed(),
-            diff_summary: None,
-        });
-
-        Ok(installed)
+            AuditAction::InstallTheme,
+            format!("安装主题压缩包: {}", archive_path.display()),
+            None,
+            None,
+            |_| (true, None),
+            || {
+                Self::validate_theme_archive_source(archive_path, caller_uid)?;
+                let installed = grub_transaction_engine::install_theme_from_archive(
+                    archive_path,
+                    &self.themes_dir,
+                    theme_name,
+                )
+                .map_err(|e| DaemonError::ThemeInstallFailed {
+                    reason: e.to_string(),
+                })?;
+                Ok(installed)
+            },
+        )
     }
 
     /// 一键回滚至指定快照（审计 UID 取自进程环境回退）
@@ -180,64 +155,62 @@ impl GrubService {
         caller_uid: u32,
     ) -> Result<(), DaemonError> {
         let _write_guard = self.acquire_write_lock();
-        let start_time = Instant::now();
-        let res = (|| -> Result<(), DaemonError> {
-            let snapshots =
-                list_snapshots(&self.backup_dir).map_err(|e| DaemonError::SnapshotListFailed {
-                    reason: e.to_string(),
-                })?;
-
-            let target_snapshot = snapshots
-                .into_iter()
-                .find(|s| s.id == snapshot_id)
-                .ok_or_else(|| DaemonError::SnapshotNotFound {
-                    id: snapshot_id.to_string(),
-                })?;
-
-            restore_snapshot(&target_snapshot).map_err(|e| DaemonError::SnapshotRestoreFailed {
-                id: snapshot_id.to_string(),
-                reason: e.to_string(),
-            })?;
-
-            // 还原配置后必须重新生成 grub.cfg，否则磁盘配置与引导脚本不一致
-            let rebuild_cmd = SafeCommand::new(&self.distro_profile.update_command)
-                .and_then(|c| c.args(&self.distro_profile.command_args))
-                .map_err(DaemonError::SecurityCheckFailed)?;
-
-            let rebuild_output = rebuild_cmd
-                .output_with_timeout(std::time::Duration::from_secs(60))
-                .map_err(|e| DaemonError::CommandLaunchFailed {
-                    command: self.distro_profile.update_command.clone(),
-                    reason: format!("快照已还原但引导重建失败: {e}"),
-                })?;
-
-            if !rebuild_output.status.success() {
-                let stderr = String::from_utf8_lossy(&rebuild_output.stderr);
-                return Err(DaemonError::CommandLaunchFailed {
-                    command: self.distro_profile.update_command.clone(),
-                    reason: format!(
-                        "快照已还原但引导重建退出码非零 ({:?}): {}",
-                        rebuild_output.status.code(),
-                        stderr.trim()
-                    ),
-                });
-            }
-
-            info!("成功还原历史快照并重建引导配置: {}", snapshot_id);
-            Ok(())
-        })();
-
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::RollbackSnapshot,
-            reason: format!("还原至快照 {}", snapshot_id),
-            snapshot_id: Some(snapshot_id.to_string()),
-            success: res.is_ok(),
-            duration: start_time.elapsed(),
-            diff_summary: None,
-        });
+            AuditAction::RollbackSnapshot,
+            format!("还原至快照 {}", snapshot_id),
+            Some(snapshot_id.to_string()),
+            None,
+            |_| (true, None),
+            || {
+                let snapshots = list_snapshots(&self.backup_dir).map_err(|e| {
+                    DaemonError::SnapshotListFailed {
+                        reason: e.to_string(),
+                    }
+                })?;
 
-        res
+                let target_snapshot = snapshots
+                    .into_iter()
+                    .find(|s| s.id == snapshot_id)
+                    .ok_or_else(|| DaemonError::SnapshotNotFound {
+                        id: snapshot_id.to_string(),
+                    })?;
+
+                restore_snapshot(&target_snapshot).map_err(|e| {
+                    DaemonError::SnapshotRestoreFailed {
+                        id: snapshot_id.to_string(),
+                        reason: e.to_string(),
+                    }
+                })?;
+
+                // 还原配置后必须重新生成 grub.cfg，否则磁盘配置与引导脚本不一致
+                let rebuild_cmd = SafeCommand::new(&self.distro_profile.update_command)
+                    .and_then(|c| c.args(&self.distro_profile.command_args))
+                    .map_err(DaemonError::SecurityCheckFailed)?;
+
+                let rebuild_output = rebuild_cmd
+                    .output_with_timeout(std::time::Duration::from_secs(60))
+                    .map_err(|e| DaemonError::CommandLaunchFailed {
+                        command: self.distro_profile.update_command.clone(),
+                        reason: format!("快照已还原但引导重建失败: {e}"),
+                    })?;
+
+                if !rebuild_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&rebuild_output.stderr);
+                    return Err(DaemonError::CommandLaunchFailed {
+                        command: self.distro_profile.update_command.clone(),
+                        reason: format!(
+                            "快照已还原但引导重建退出码非零 ({:?}): {}",
+                            rebuild_output.status.code(),
+                            stderr.trim()
+                        ),
+                    });
+                }
+
+                info!("成功还原历史快照并重建引导配置: {}", snapshot_id);
+                Ok(())
+            },
+        )
     }
 
     /// 列出已安装的 GRUB 主题
@@ -264,23 +237,21 @@ impl GrubService {
     /// 名称非法、路径穿越或删除失败时返回对应的 [`DaemonError`]。
     pub fn remove_theme_as(&self, theme_name: &str, caller_uid: u32) -> Result<(), DaemonError> {
         let _write_guard = self.acquire_write_lock();
-        let start_time = Instant::now();
-        let res = remove_theme(&self.themes_dir, theme_name).map_err(|e| {
-            DaemonError::ThemeInstallFailed {
-                reason: format!("卸载主题 '{theme_name}' 失败: {e}"),
-            }
-        });
-
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::RemoveTheme,
-            reason: format!("卸载主题 '{theme_name}'"),
-            snapshot_id: None,
-            success: res.is_ok(),
-            duration: start_time.elapsed(),
-            diff_summary: None,
-        });
-        res
+            AuditAction::RemoveTheme,
+            format!("卸载主题 '{theme_name}'"),
+            None,
+            None,
+            |_| (true, None),
+            || {
+                remove_theme(&self.themes_dir, theme_name).map_err(|e| {
+                    DaemonError::ThemeInstallFailed {
+                        reason: format!("卸载主题 '{theme_name}' 失败: {e}"),
+                    }
+                })
+            },
+        )
     }
 
     /// 删除指定历史快照（审计 UID 取自进程环境回退）
@@ -301,30 +272,28 @@ impl GrubService {
         caller_uid: u32,
     ) -> Result<(), DaemonError> {
         let _write_guard = self.acquire_write_lock();
-        let start_time = Instant::now();
-        let res = delete_snapshot(&self.backup_dir, snapshot_id).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                DaemonError::SnapshotNotFound {
-                    id: snapshot_id.to_string(),
-                }
-            } else {
-                DaemonError::SnapshotRestoreFailed {
-                    id: snapshot_id.to_string(),
-                    reason: e.to_string(),
-                }
-            }
-        });
-
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::DeleteSnapshot,
-            reason: format!("删除快照 {snapshot_id}"),
-            snapshot_id: Some(snapshot_id.to_string()),
-            success: res.is_ok(),
-            duration: start_time.elapsed(),
-            diff_summary: None,
-        });
-        res
+            AuditAction::DeleteSnapshot,
+            format!("删除快照 {snapshot_id}"),
+            Some(snapshot_id.to_string()),
+            None,
+            |_| (true, None),
+            || {
+                delete_snapshot(&self.backup_dir, snapshot_id).map_err(|e| {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        DaemonError::SnapshotNotFound {
+                            id: snapshot_id.to_string(),
+                        }
+                    } else {
+                        DaemonError::SnapshotRestoreFailed {
+                            id: snapshot_id.to_string(),
+                            reason: e.to_string(),
+                        }
+                    }
+                })
+            },
+        )
     }
 
     /// 将快照导出到指定路径（审计 UID 取自进程环境回退）
@@ -349,29 +318,27 @@ impl GrubService {
         dest_path: &Path,
         caller_uid: u32,
     ) -> Result<PathBuf, DaemonError> {
-        let start_time = Instant::now();
-        let res = export_snapshot(&self.backup_dir, snapshot_id, dest_path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                DaemonError::SnapshotNotFound {
-                    id: snapshot_id.to_string(),
-                }
-            } else {
-                DaemonError::AtomicWriteFailed {
-                    reason: format!("导出快照 '{snapshot_id}' 失败: {e}"),
-                }
-            }
-        });
-
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::ExportSnapshot,
-            reason: format!("导出快照 {snapshot_id} 至 {}", dest_path.display()),
-            snapshot_id: Some(snapshot_id.to_string()),
-            success: res.is_ok(),
-            duration: start_time.elapsed(),
-            diff_summary: None,
-        });
-        res
+            AuditAction::ExportSnapshot,
+            format!("导出快照 {snapshot_id} 至 {}", dest_path.display()),
+            Some(snapshot_id.to_string()),
+            None,
+            |_| (true, None),
+            || {
+                export_snapshot(&self.backup_dir, snapshot_id, dest_path).map_err(|e| {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        DaemonError::SnapshotNotFound {
+                            id: snapshot_id.to_string(),
+                        }
+                    } else {
+                        DaemonError::AtomicWriteFailed {
+                            reason: format!("导出快照 '{snapshot_id}' 失败: {e}"),
+                        }
+                    }
+                })
+            },
+        )
     }
 
     /// 列出所有可用快照
@@ -502,58 +469,53 @@ impl GrubService {
         caller_uid: u32,
     ) -> Result<(), DaemonError> {
         let _write_guard = self.acquire_write_lock();
-        let start_time = Instant::now();
-        let res = (|| -> Result<(), DaemonError> {
-            check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
-                DaemonError::PackageManagerLocked {
-                    message: e.to_string(),
-                }
-            })?;
-
-            debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
-
-            // grub-set-default 仅在 GRUB_DEFAULT=saved 时生效，必要时先切换到记忆模式
-            self.ensure_saved_default_mode(&TransactionOptions::default(), caller_uid)?;
-
-            let cmd = SafeCommand::new(&self.distro_profile.set_default_command)
-                .and_then(|c| c.arg(entry_id_or_title))
-                .map_err(DaemonError::SecurityCheckFailed)?;
-
-            match cmd.output() {
-                Ok(output) => {
-                    if output.status.success() {
-                        info!("通过 grubenv 成功设置默认启动项: {}", entry_id_or_title);
-                        Ok(())
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        Err(DaemonError::CommandLaunchFailed {
-                            command: self.distro_profile.set_default_command.clone(),
-                            reason: format!(
-                                "退出码非零 ({:?}): {}",
-                                output.status.code(),
-                                stderr.trim()
-                            ),
-                        })
-                    }
-                }
-                Err(e) => Err(DaemonError::CommandLaunchFailed {
-                    command: self.distro_profile.set_default_command.clone(),
-                    reason: e.to_string(),
-                }),
-            }
-        })();
-
-        record_audit_event(&AuditEvent {
+        with_audit(
             caller_uid,
-            action: AuditAction::SetDefaultFast,
-            reason: format!("设置为 {}", entry_id_or_title),
-            snapshot_id: None,
-            success: res.is_ok(),
-            duration: start_time.elapsed(),
-            diff_summary: None,
-        });
+            AuditAction::SetDefaultFast,
+            format!("设置为 {}", entry_id_or_title),
+            None,
+            None,
+            |_| (true, None),
+            || {
+                check_package_manager_locks(&self.lock_descriptors).map_err(|e| {
+                    DaemonError::PackageManagerLocked {
+                        message: e.to_string(),
+                    }
+                })?;
 
-        res
+                debug!("开始通过 grubenv 快速设置默认引导项: {}", entry_id_or_title);
+
+                // grub-set-default 仅在 GRUB_DEFAULT=saved 时生效，必要时先切换到记忆模式
+                self.ensure_saved_default_mode(&TransactionOptions::default(), caller_uid)?;
+
+                let cmd = SafeCommand::new(&self.distro_profile.set_default_command)
+                    .and_then(|c| c.arg(entry_id_or_title))
+                    .map_err(DaemonError::SecurityCheckFailed)?;
+
+                match cmd.output() {
+                    Ok(output) => {
+                        if output.status.success() {
+                            info!("通过 grubenv 成功设置默认启动项: {}", entry_id_or_title);
+                            Ok(())
+                        } else {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            Err(DaemonError::CommandLaunchFailed {
+                                command: self.distro_profile.set_default_command.clone(),
+                                reason: format!(
+                                    "退出码非零 ({:?}): {}",
+                                    output.status.code(),
+                                    stderr.trim()
+                                ),
+                            })
+                        }
+                    }
+                    Err(e) => Err(DaemonError::CommandLaunchFailed {
+                        command: self.distro_profile.set_default_command.clone(),
+                        reason: e.to_string(),
+                    }),
+                }
+            },
+        )
     }
 }
 
