@@ -1,113 +1,49 @@
-use std::error::Error;
-use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use thiserror::Error;
 
 /// 主题包安全与解压错误枚举
 ///
 /// # 设计原理
 /// - **实现初衷**：在导入外部第三方 GRUB 主题时，必须严格防御 Zip Slip 路径穿越攻击，
 ///   并确保导入的内容具备合法的 `theme.txt` 描述符。
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum ThemeSecurityError {
     /// 检测到路径穿越攻击 (包含 `..` 或试图逃逸出目标沙箱根目录)
+    #[error("检测到潜在路径穿越攻击！条目路径: '{entry_path}'，试图逃逸出目标沙箱目录: {}", target_root.display())]
     PathTraversalDetected {
         entry_path: String,
         target_root: PathBuf,
     },
     /// 主题名称非法 (包含路径分隔符或保留字符)
+    #[error("主题名称 '{name}' 非法: {reason}")]
     InvalidThemeName { name: String, reason: String },
     /// 主题解压后缺少必须的 theme.txt 描述符文件
+    #[error("主题包不完整，在目录 '{}' 下未找到合法的 theme.txt 描述文件", theme_dir.display())]
     MissingThemeDescriptor { theme_dir: PathBuf },
     /// 文件系统 I/O 操作失败
+    #[error("执行主题文件操作 '{action}' 失败，路径: {}, 原因: {reason}", path.display())]
     IoError {
         action: String,
         path: PathBuf,
         reason: String,
     },
     /// 不支持的主题压缩包格式
+    #[error("不支持的主题压缩包格式: {}。仅支持 .zip、.tar.gz 或 .tar 格式", path.display())]
     UnsupportedArchiveFormat { path: PathBuf },
     /// 压缩包文件损坏或无法解析
+    #[error("主题压缩包 '{}' 损坏或格式错误: {reason}", path.display())]
     ArchiveCorrupted { path: PathBuf, reason: String },
     /// 压缩包解压超出安全配额限制 (解压炸弹防御)
+    #[error("主题包安全限制触发（防解压炸弹）: {reason}")]
     ResourceLimitExceeded { reason: String },
     /// 压缩包内包含不安全的文件类型 (如符号链接或设备节点)
+    #[error("拒绝提取包含潜在安全隐患的文件类型！条目: '{entry_path}'，类型: {entry_type}")]
     InsecureEntryType {
         entry_path: String,
         entry_type: String,
     },
 }
-
-impl fmt::Display for ThemeSecurityError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ThemeSecurityError::PathTraversalDetected {
-                entry_path,
-                target_root,
-            } => {
-                write!(
-                    f,
-                    "检测到潜在路径穿越攻击！条目路径: '{}'，试图逃逸出目标沙箱目录: {}",
-                    entry_path,
-                    target_root.display()
-                )
-            }
-            ThemeSecurityError::InvalidThemeName { name, reason } => {
-                write!(f, "主题名称 '{}' 非法: {}", name, reason)
-            }
-            ThemeSecurityError::MissingThemeDescriptor { theme_dir } => {
-                write!(
-                    f,
-                    "主题包不完整，在目录 '{}' 下未找到合法的 theme.txt 描述文件",
-                    theme_dir.display()
-                )
-            }
-            ThemeSecurityError::IoError {
-                action,
-                path,
-                reason,
-            } => {
-                write!(
-                    f,
-                    "执行主题文件操作 '{}' 失败，路径: {}，原因: {}",
-                    action,
-                    path.display(),
-                    reason
-                )
-            }
-            ThemeSecurityError::UnsupportedArchiveFormat { path } => {
-                write!(
-                    f,
-                    "不支持的主题压缩包格式: {}。仅支持 .zip、.tar.gz 或 .tar 格式",
-                    path.display()
-                )
-            }
-            ThemeSecurityError::ArchiveCorrupted { path, reason } => {
-                write!(
-                    f,
-                    "主题压缩包 '{}' 损坏或格式错误: {}",
-                    path.display(),
-                    reason
-                )
-            }
-            ThemeSecurityError::ResourceLimitExceeded { reason } => {
-                write!(f, "主题包安全限制触发（防解压炸弹）: {}", reason)
-            }
-            ThemeSecurityError::InsecureEntryType {
-                entry_path,
-                entry_type,
-            } => {
-                write!(
-                    f,
-                    "拒绝提取包含潜在安全隐患的文件类型！条目: '{}'，类型: {}",
-                    entry_path, entry_type
-                )
-            }
-        }
-    }
-}
-
-impl Error for ThemeSecurityError {}
 
 /// 校验主题名称合法性（防止主题名自身包含路径穿越字符）
 pub fn validate_theme_name(name: &str) -> Result<(), ThemeSecurityError> {
