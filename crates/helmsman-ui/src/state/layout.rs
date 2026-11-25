@@ -144,6 +144,34 @@ impl AppState {
     pub fn move_entry_to_root(&mut self, full_path: &str) -> bool {
         self.move_entry_to_submenu(full_path, "")
     }
+
+    /// 修改任意引导条目（系统条目或自定义条目）在 GRUB 开机菜单中的显示名称（留空恢复原标题）
+    pub fn rename_entry(&mut self, full_path: &str, new_title: &str) -> bool {
+        if !self
+            .collect_unfiltered_items()
+            .iter()
+            .any(|item| item.full_path == full_path)
+        {
+            return false;
+        }
+        let trimmed = new_title.trim();
+        if trimmed.is_empty() {
+            self.draft_menu_layout.title_overrides.remove(full_path);
+        } else {
+            self.draft_menu_layout
+                .title_overrides
+                .insert(full_path.to_string(), trimmed.to_string());
+        }
+        true
+    }
+
+    /// 获取条目被覆写后的 GRUB 菜单显示名称（未覆写返回 `None`）
+    pub fn get_entry_title_override(&self, full_path: &str) -> Option<&str> {
+        self.draft_menu_layout
+            .title_overrides
+            .get(full_path)
+            .map(String::as_str)
+    }
 }
 
 #[cfg(test)]
@@ -200,6 +228,17 @@ menuentry 'Windows Boot Manager' --id 'win-efi' {
                 .get_entry_items()
                 .iter()
                 .any(|i| i.full_path == "Windows Boot Manager")
+        );
+
+        // 4. 修改系统条目 GRUB 菜单显示名称
+        assert!(state.rename_entry("Windows Boot Manager", "Windows 11"));
+        let renamed = state
+            .get_entry_items()
+            .into_iter()
+            .find(|i| i.full_path == "Windows Boot Manager");
+        assert_eq!(
+            renamed.map(|i| i.display_title).as_deref(),
+            Some("Windows 11")
         );
     }
 }

@@ -243,53 +243,61 @@ impl HelmsmanWindow {
         self.alias_input.update(cx, |input, cx| {
             input.set_value(alias, window, cx);
         });
-        let custom_title = self
+        let menu_title = self
             .state
             .get_selected_entry()
-            .and_then(|e| e.id.as_deref())
-            .and_then(|id| {
+            .map(|e| {
                 self.state
-                    .draft_custom_entries
-                    .iter()
-                    .find(|c| c.id == id)
-                    .map(|c| c.title.clone())
+                    .get_entry_title_override(&e.full_path)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| e.title.clone())
             })
             .unwrap_or_default();
         self.custom_title_input.update(cx, |input, cx| {
-            input.set_value(custom_title, window, cx);
+            input.set_value(menu_title, window, cx);
         });
         cx.notify();
     }
 
-    /// 保存当前选中自定义条目的实际 GRUB 菜单显示名称
-    pub fn save_selected_custom_title(&mut self, cx: &mut Context<Self>) {
-        let Some(entry_id) = self.state.get_selected_entry().and_then(|e| e.id.clone()) else {
+    /// 保存当前选中引导条目（系统条目或自定义条目）在 GRUB 开机菜单中的显示名称
+    pub fn save_selected_entry_title(&mut self, cx: &mut Context<Self>) {
+        let Some(entry) = self.state.get_selected_entry().cloned() else {
             return;
         };
         let new_title = self.custom_title_input.read(cx).value().trim().to_string();
-        if new_title.is_empty() {
-            self.toast = Some((false, "GRUB 菜单显示名称不能为空".to_string()));
+
+        if let Some(entry_id) = entry.id.as_deref()
+            && let Some(mut custom) = self
+                .state
+                .draft_custom_entries
+                .iter()
+                .find(|c| c.id == entry_id)
+                .cloned()
+        {
+            if new_title.is_empty() {
+                self.toast = Some((false, "自定义条目显示名称不能为空".to_string()));
+                cx.notify();
+                return;
+            }
+            custom.title = new_title.clone();
+            if self.state.update_custom_entry(custom) {
+                self.state.select_entry(&new_title);
+                self.toast = Some((
+                    true,
+                    format!("已将 GRUB 菜单显示名称更新为 '{new_title}'（审核保存后生效）"),
+                ));
+            }
             cx.notify();
             return;
         }
-        let Some(mut custom) = self
-            .state
-            .draft_custom_entries
-            .iter()
-            .find(|c| c.id == entry_id)
-            .cloned()
-        else {
-            self.toast = Some((false, "仅受管自定义条目支持修改 GRUB 菜单标题".to_string()));
-            cx.notify();
-            return;
-        };
-        custom.title = new_title.clone();
-        if self.state.update_custom_entry(custom) {
-            self.state.select_entry(&new_title);
-            self.toast = Some((
-                true,
-                format!("已将 GRUB 菜单显示名称更新为 '{new_title}'（审核保存后生效）"),
-            ));
+
+        if self.state.rename_entry(&entry.full_path, &new_title) {
+            let msg = if new_title.is_empty() {
+                format!("已恢复 '{}' 的原始 GRUB 菜单名称", entry.title)
+            } else {
+                format!("已将 GRUB 菜单显示名称修改为 '{new_title}'（审核保存后生效）")
+            };
+            self.toast = Some((true, msg));
         }
         cx.notify();
     }

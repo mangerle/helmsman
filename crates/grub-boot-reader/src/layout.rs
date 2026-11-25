@@ -19,12 +19,18 @@ pub struct MenuLayout {
     /// 子菜单归属覆写（`full_path` -> 目标子菜单标题；空字符串 `""` 表示强制移回根层级）
     #[serde(default)]
     pub submenu_overrides: HashMap<String, String>,
+    /// 菜单显示名称覆写（`full_path` -> 期望在 GRUB 开机菜单中显示的新标题）
+    #[serde(default)]
+    pub title_overrides: HashMap<String, String>,
 }
 
 impl MenuLayout {
     /// 判断当前布局是否为空（没有任何编排覆写）
     pub fn is_empty(&self) -> bool {
-        self.order.is_empty() && self.hidden.is_empty() && self.submenu_overrides.is_empty()
+        self.order.is_empty()
+            && self.hidden.is_empty()
+            && self.submenu_overrides.is_empty()
+            && self.title_overrides.is_empty()
     }
 }
 
@@ -82,7 +88,7 @@ pub fn apply_menu_layout_to_grub_cfg(grub_cfg: &str, layout: &MenuLayout) -> Str
         return grub_cfg.to_string();
     }
 
-    // 1. 过滤隐藏条目并应用子菜单归属覆写
+    // 1. 过滤隐藏条目并应用子菜单归属与菜单标题覆写
     let mut visible: Vec<RawEntryBlock> = blocks
         .into_iter()
         .filter(|b| !layout.hidden.contains(&b.full_path))
@@ -93,6 +99,11 @@ pub fn apply_menu_layout_to_grub_cfg(grub_cfg: &str, layout: &MenuLayout) -> Str
                 } else {
                     Some(target_sub.trim().to_string())
                 };
+            }
+            if let Some(new_title) = layout.title_overrides.get(&b.full_path)
+                && !new_title.trim().is_empty()
+            {
+                b.raw_block = replace_menuentry_title(&b.raw_block, new_title.trim());
             }
             b
         })
@@ -164,6 +175,36 @@ fn extract_quoted_title(line: &str) -> Option<String> {
     let rest = &line[first + 1..];
     let second = rest.find(quote)?;
     Some(rest[..second].to_string())
+}
+
+/// 替换 `menuentry '原标题' ...` 首行中的显示名称，保留后续 `--class`/`--id` 等全部参数
+fn replace_menuentry_title(block: &str, new_title: &str) -> String {
+    let safe_title = new_title.replace('\'', "");
+    let mut lines = block.lines();
+    let Some(first_line) = lines.next() else {
+        return block.to_string();
+    };
+    let quote = if first_line.contains('\'') { '\'' } else { '"' };
+    let replaced_first = if let Some(start) = first_line.find(quote)
+        && let Some(rel_end) = first_line[start + 1..].find(quote)
+    {
+        let end = start + 1 + rel_end;
+        format!(
+            "{}'{}'{}",
+            &first_line[..start],
+            safe_title,
+            &first_line[end + 1..]
+        )
+    } else {
+        first_line.to_string()
+    };
+
+    let mut out = replaced_first;
+    for line in lines {
+        out.push('\n');
+        out.push_str(line);
+    }
+    out
 }
 
 fn extract_submenu_entries(sub_lines: &[&str], out: &mut Vec<RawEntryBlock>) {
@@ -262,6 +303,11 @@ menuentry 'Windows Boot Manager' {
             "Advanced options for Ubuntu>Ubuntu, with Linux 6.8.0".to_string(),
             String::new(),
         );
+        let mut titles = HashMap::new();
+        titles.insert(
+            "Windows Boot Manager".to_string(),
+            "Windows 11 专业版".to_string(),
+        );
         let layout = MenuLayout {
             order: vec![
                 "Windows Boot Manager".to_string(),
@@ -269,12 +315,14 @@ menuentry 'Windows Boot Manager' {
             ],
             hidden: vec!["Ubuntu 24.04 LTS".to_string()],
             submenu_overrides: overrides,
+            title_overrides: titles,
         };
 
         let result = apply_menu_layout_to_grub_cfg(SAMPLE_CFG, &layout);
         assert!(!result.contains("Ubuntu 24.04 LTS"));
         assert!(!result.contains("submenu 'Advanced options for Ubuntu'"));
-        let win_pos = result.find("Windows Boot Manager").unwrap_or(usize::MAX);
+        assert!(result.contains("menuentry 'Windows 11 专业版'"));
+        let win_pos = result.find("Windows 11 专业版").unwrap_or(usize::MAX);
         let adv_pos = result
             .find("Ubuntu, with Linux 6.8.0")
             .unwrap_or(usize::MAX);

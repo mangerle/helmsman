@@ -222,14 +222,14 @@ pub fn render_hidden_entries_panel(
         .into_any_element()
 }
 
-/// 渲染受管自定义条目的 GRUB 菜单显示名称编辑行（实际写入 41_helmsman_custom）
+/// 渲染引导条目的 GRUB 菜单显示名称编辑行（支持所有系统条目与自定义条目）
 pub fn render_custom_title_row(
     win: &HelmsmanWindow,
     cx: &mut Context<HelmsmanWindow>,
 ) -> impl IntoElement {
     setting_row(
         "GRUB 菜单显示名称",
-        "修改实际开机引导菜单中展示的条目名称（仅对自定义条目生效）",
+        "修改实际开机 GRUB 引导菜单中展示的名称（留空则恢复原始标题）",
         div()
             .flex()
             .items_center()
@@ -246,7 +246,7 @@ pub fn render_custom_title_row(
                     .xsmall()
                     .label("更新名称")
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.save_selected_custom_title(cx);
+                        this.save_selected_entry_title(cx);
                     })),
             ),
         cx,

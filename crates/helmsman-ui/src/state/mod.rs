@@ -131,11 +131,23 @@ impl AppState {
                     .submenu_overrides
                     .get(&item.full_path)
                 {
+                    if let Some(title_override) =
+                        self.draft_menu_layout.title_overrides.get(&item.full_path)
+                        && !title_override.trim().is_empty()
+                    {
+                        item.display_title = title_override.trim().to_string();
+                    }
                     item.submenu_name = if sub_override.trim().is_empty() {
                         None
                     } else {
                         Some(sub_override.trim().to_string())
                     };
+                }
+                if let Some(title_override) =
+                    self.draft_menu_layout.title_overrides.get(&item.full_path)
+                    && !title_override.trim().is_empty()
+                {
+                    item.display_title = title_override.trim().to_string();
                 }
                 item
             })
