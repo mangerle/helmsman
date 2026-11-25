@@ -1,4 +1,5 @@
 pub mod appearance;
+pub mod appearance_controls;
 pub mod boot_entries;
 pub mod entry_toolbar;
 pub mod modals;

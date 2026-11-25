@@ -1,5 +1,6 @@
 use crate::backend::{self, BackendSnapshot};
 use crate::views;
+use crate::views::appearance_controls::AppearanceControls;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::label::Label;
@@ -69,6 +70,8 @@ pub struct HelmsmanWindow {
     pub cmdline_input: Entity<InputState>,
     /// 自定义引导条目 GRUB 菜单显示标题输入框状态
     pub custom_title_input: Entity<InputState>,
+    /// 外观设置页的步进输入与下拉选择控件集合
+    pub appearance_controls: AppearanceControls,
     /// 是否正在执行主题下载或安装
     pub is_installing_theme: bool,
     /// 应用自身更新状态
@@ -117,6 +120,7 @@ impl HelmsmanWindow {
         let custom_title_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("输入自定义条目的 GRUB 菜单显示名称")
         });
+        let appearance_controls = AppearanceControls::new(&state, window, cx);
 
         // 监听系统浅色/深色外观变化，保证“跟随系统”模式实时响应桌面环境切换
         cx.observe_window_appearance(window, |this, window, cx| {
@@ -138,6 +142,7 @@ impl HelmsmanWindow {
             alias_input,
             cmdline_input,
             custom_title_input,
+            appearance_controls,
             is_installing_theme: false,
             update_status: AppUpdateStatus::Idle,
         }

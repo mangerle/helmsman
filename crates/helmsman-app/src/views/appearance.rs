@@ -2,23 +2,15 @@ use crate::app::HelmsmanWindow;
 use crate::backend::FEATURED_THEMES;
 use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::Input;
+use gpui_kit::component::input::{Input, NumberInput};
 use gpui_kit::component::label::Label;
+use gpui_kit::component::select::Select;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, IconName, Sizable as _, StyledExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use grub_config_parser::TimeoutStyle;
-use helmsman_ui::AppState;
-
-/// 常见高可读性 GRUB 终端配色方案预设
-const COLOR_PRESETS: &[(&str, &str, &str)] = &[
-    ("经典白/黑", "white/black", "black/light-gray"),
-    ("极客绿/黑", "light-green/black", "black/green"),
-    ("科技青/深蓝", "light-cyan/blue", "white/cyan"),
-];
 
 /// 渲染“外观与引导参数”页面（带滚动容器与现代卡片排版）
 pub fn render_appearance(
@@ -53,7 +45,6 @@ fn render_timeout_section(
     cx: &mut Context<HelmsmanWindow>,
 ) -> impl IntoElement {
     let timeout = win.state.get_timeout();
-    let style = win.state.get_timeout_style();
 
     section_card("等待倒计时与菜单显示策略", cx)
         .child(setting_row(
@@ -62,82 +53,41 @@ fn render_timeout_section(
             div()
                 .flex()
                 .items_center()
-                .gap_1p5()
+                .gap_2()
                 .child(
-                    Button::new("timeout-dec")
-                        .outline()
-                        .xsmall()
-                        .label("-1s")
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            let next = (timeout - 1).max(-1);
-                            if let Err(e) = this.state.set_timeout(next) {
-                                this.toast = Some((false, e.to_string()));
-                            }
-                            cx.notify();
-                        })),
+                    div()
+                        .w(px(140.0))
+                        .child(NumberInput::new(&win.appearance_controls.timeout_input).small()),
                 )
-                .child(
-                    Button::new("timeout-inc")
-                        .outline()
-                        .xsmall()
-                        .label("+1s")
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            let next = if timeout < 0 { 1 } else { timeout + 1 };
-                            if let Err(e) = this.state.set_timeout(next) {
-                                this.toast = Some((false, e.to_string()));
-                            }
-                            cx.notify();
-                        })),
-                )
-                .children([0, 3, 5, 10, -1].into_iter().map(|sec| {
-                    let label = if sec < 0 {
-                        "无限".to_string()
-                    } else {
-                        format!("{sec}s")
-                    };
-                    let btn = Button::new(("timeout-preset", sec as usize))
-                        .xsmall()
-                        .label(label);
-                    let btn = if timeout == sec {
+                .child({
+                    let btn = Button::new("btn-timeout-infinite")
+                        .small()
+                        .label("无限等待");
+                    let btn = if timeout < 0 {
                         btn.primary()
                     } else {
                         btn.outline()
                     };
-                    btn.on_click(cx.listener(move |this, _, _, cx| {
-                        if let Err(e) = this.state.set_timeout(sec) {
+                    btn.on_click(cx.listener(|this, _, window, cx| {
+                        let next = if this.state.get_timeout() < 0 { 5 } else { -1 };
+                        if let Err(e) = this.state.set_timeout(next) {
                             this.toast = Some((false, e.to_string()));
+                        } else {
+                            this.appearance_controls.timeout_input.update(cx, |s, cx| {
+                                s.set_value(next.to_string(), window, cx);
+                            });
                         }
                         cx.notify();
                     }))
-                })),
+                }),
             cx,
         ))
         .child(setting_row(
             "菜单显示风格 (GRUB_TIMEOUT_STYLE)",
             "控制开机时是直接展示完整菜单、倒计时还是静默等待",
-            div().flex().items_center().gap_1p5().children(
-                [
-                    (TimeoutStyle::Menu, "menu"),
-                    (TimeoutStyle::Hidden, "hidden"),
-                    (TimeoutStyle::Countdown, "countdown"),
-                ]
-                .into_iter()
-                .enumerate()
-                .map(|(idx, (s, title))| {
-                    let btn = Button::new(("timeout-style", idx)).xsmall().label(title);
-                    let btn = if style == s {
-                        btn.primary()
-                    } else {
-                        btn.outline()
-                    };
-                    btn.on_click(cx.listener(move |this, _, _, cx| {
-                        if let Err(e) = this.state.set_timeout_style(s) {
-                            this.toast = Some((false, e.to_string()));
-                        }
-                        cx.notify();
-                    }))
-                }),
-            ),
+            div()
+                .w(px(230.0))
+                .child(Select::new(&win.appearance_controls.timeout_style_select).small()),
             cx,
         ))
 }
@@ -154,29 +104,45 @@ fn render_resolution_and_colors_section(
     section_card("分辨率、开机壁纸与终端颜色", cx)
         .child(setting_row(
             "菜单分辨率 (GRUB_GFXMODE)",
-            &format!("当前模式: {gfxmode}"),
-            div().flex().flex_wrap().justify_end().gap_1p5().children(
-                AppState::common_gfx_modes()
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, mode)| {
-                        let mode_str = (*mode).to_string();
-                        let btn = Button::new(("gfxmode", idx))
-                            .xsmall()
-                            .label(mode_str.clone());
-                        let btn = if gfxmode == *mode {
-                            btn.primary()
-                        } else {
-                            btn.outline()
-                        };
-                        btn.on_click(cx.listener(move |this, _, _, cx| {
-                            if let Err(e) = this.state.set_gfxmode(&mode_str) {
-                                this.toast = Some((false, e.to_string()));
+            &format!("当前模式: {gfxmode}（支持预设下拉或手动输入后应用）"),
+            div()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .child(
+                    div()
+                        .w(px(155.0))
+                        .child(Select::new(&win.appearance_controls.gfxmode_select).small()),
+                )
+                .child(
+                    div()
+                        .w(px(135.0))
+                        .child(Input::new(&win.appearance_controls.gfxmode_input).small()),
+                )
+                .child(
+                    Button::new("btn-apply-gfxmode")
+                        .outline()
+                        .small()
+                        .label("应用")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let val = this
+                                .appearance_controls
+                                .gfxmode_input
+                                .read(cx)
+                                .value()
+                                .trim()
+                                .to_string();
+                            match this.state.set_gfxmode(&val) {
+                                Ok(()) => {
+                                    this.toast = Some((true, format!("已设置菜单分辨率为 {val}")));
+                                }
+                                Err(e) => {
+                                    this.toast = Some((false, e.to_string()));
+                                }
                             }
                             cx.notify();
-                        }))
-                    }),
-            ),
+                        })),
+                ),
             cx,
         ))
         .child(setting_row(
@@ -212,72 +178,8 @@ fn render_resolution_and_colors_section(
             "终端颜色配色 (常规 / 高亮)",
             &format!("{color_normal}  /  {color_highlight}"),
             div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap_1p5()
-                .children(
-                    COLOR_PRESETS
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, (title, norm, hi))| {
-                            let is_active = color_normal == *norm && color_highlight == *hi;
-                            let (norm_fg, norm_bg) = grub_pair_preview_colors(norm);
-                            let (hi_fg, hi_bg) = grub_pair_preview_colors(hi);
-                            let btn = Button::new(("color-preset", idx)).xsmall().child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1p5()
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_0p5()
-                                            .child(
-                                                div()
-                                                    .w(px(8.0))
-                                                    .h(px(8.0))
-                                                    .rounded_full()
-                                                    .border_1()
-                                                    .border_color(norm_fg)
-                                                    .bg(norm_bg),
-                                            )
-                                            .child(
-                                                div()
-                                                    .w(px(8.0))
-                                                    .h(px(8.0))
-                                                    .rounded_full()
-                                                    .border_1()
-                                                    .border_color(hi_fg)
-                                                    .bg(hi_bg),
-                                            ),
-                                    )
-                                    .child(Label::new(*title).text_xs()),
-                            );
-                            let btn = if is_active {
-                                btn.primary()
-                            } else {
-                                btn.outline()
-                            };
-                            btn.on_click(cx.listener(move |this, _, _, cx| {
-                                if let Err(e) = this.state.set_grub_colors(Some(norm), Some(hi)) {
-                                    this.toast = Some((false, e.to_string()));
-                                }
-                                cx.notify();
-                            }))
-                        }),
-                )
-                .child(
-                    Button::new("btn-clear-colors")
-                        .ghost()
-                        .xsmall()
-                        .label("恢复默认")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let _ = this.state.set_grub_colors(None, None);
-                            cx.notify();
-                        })),
-                ),
+                .w(px(280.0))
+                .child(Select::new(&win.appearance_controls.color_preset_select).small()),
             cx,
         ))
 }
@@ -481,24 +383,4 @@ fn render_online_themes_section(
                         )
                 })),
         )
-}
-
-/// 将 GRUB `fg/bg` 颜色对解析为用于按钮小圆点预览的前景/背景色
-fn grub_pair_preview_colors(pair: &str) -> (Rgba, Rgba) {
-    let (fg, bg) = pair.split_once('/').unwrap_or((pair, "black"));
-    (grub_color_to_rgb(fg), grub_color_to_rgb(bg))
-}
-
-fn grub_color_to_rgb(name: &str) -> Rgba {
-    match name.trim() {
-        "white" => rgb(0xffffff),
-        "light-gray" => rgb(0xcbd5e1),
-        "black" => rgb(0x18181b),
-        "green" => rgb(0x16a34a),
-        "light-green" => rgb(0x4ade80),
-        "cyan" => rgb(0x06b6d4),
-        "light-cyan" => rgb(0x67e8f9),
-        "blue" => rgb(0x1d4ed8),
-        _ => rgb(0x94a3b8),
-    }
 }
