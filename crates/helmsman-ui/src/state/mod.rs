@@ -1,9 +1,10 @@
 mod custom;
 mod display;
+mod layout;
 
-use crate::entry_view::{BootEntryItem, flatten_boot_entries_with_options};
+use crate::entry_view::BootEntryItem;
 use crate::theme::{FontScale, ThemeMode};
-use grub_boot_reader::{BootEntry, CustomBootEntry, MenuNode, parse_grub_cfg};
+use grub_boot_reader::{BootEntry, CustomBootEntry, MenuLayout, MenuNode, parse_grub_cfg};
 use grub_config_parser::{
     BootKeyError, CmdlineError, DefaultEntry, DiffReport, GrubConfigFile, KernelCmdline,
     TimeoutSeconds, TimeoutStyle, default_entry_from_index, default_entry_from_title,
@@ -34,6 +35,10 @@ pub struct AppState {
     pub original_custom_entries: Vec<CustomBootEntry>,
     /// 用户编辑中的自定义引导条目草稿
     pub draft_custom_entries: Vec<CustomBootEntry>,
+    /// 磁盘原始菜单编排布局（只读基准）
+    pub original_menu_layout: MenuLayout,
+    /// 用户编辑中的菜单编排布局草稿
+    pub draft_menu_layout: MenuLayout,
     /// 条目友好别名映射表 (entry_id -> alias)
     pub aliases: HashMap<String, String>,
     /// 当前在列表中高亮选中的条目路径（用于右侧属性检查器）
@@ -66,6 +71,8 @@ impl AppState {
             menu_nodes,
             original_custom_entries: Vec::new(),
             draft_custom_entries: Vec::new(),
+            original_menu_layout: MenuLayout::default(),
+            draft_menu_layout: MenuLayout::default(),
             aliases: HashMap::new(),
             selected_entry_path: first_entry,
             theme_mode: ThemeMode::default(),
@@ -86,10 +93,18 @@ impl AppState {
         self
     }
 
-    /// 检查是否有未保存的更改（包括常规配置与自定义引导项）
+    /// 注入菜单编排布局
+    pub fn with_menu_layout(mut self, layout: MenuLayout) -> Self {
+        self.original_menu_layout = layout.clone();
+        self.draft_menu_layout = layout;
+        self
+    }
+
+    /// 检查是否有未保存的更改（包括常规配置、自定义引导项与菜单编排布局）
     pub fn has_unsaved_changes(&self) -> bool {
         self.original_config != self.draft_config
             || self.original_custom_entries != self.draft_custom_entries
+            || self.original_menu_layout != self.draft_menu_layout
     }
 
     /// 检查自定义引导项是否有草稿变更
@@ -101,23 +116,39 @@ impl AppState {
     pub fn reset_draft(&mut self) {
         self.draft_config = self.original_config.clone();
         self.draft_custom_entries = self.original_custom_entries.clone();
+        self.draft_menu_layout = self.original_menu_layout.clone();
     }
 
-    /// 获取当前界面的扁平条目单选模型列表（结合别名、过滤与自定义项）
+    /// 获取当前界面的扁平条目单选模型列表（结合别名、过滤、自定义项与布局编排）
     pub fn get_entry_items(&self) -> Vec<BootEntryItem> {
-        let filter_recovery = self.is_recovery_disabled();
-        let default_entry = self.get_default_entry();
-        let mut items = flatten_boot_entries_with_options(
-            &self.menu_nodes,
-            default_entry,
-            &self.aliases,
-            filter_recovery,
-        );
+        let mut items: Vec<BootEntryItem> = self
+            .collect_unfiltered_items()
+            .into_iter()
+            .filter(|item| !self.draft_menu_layout.hidden.contains(&item.full_path))
+            .map(|mut item| {
+                if let Some(sub_override) = self
+                    .draft_menu_layout
+                    .submenu_overrides
+                    .get(&item.full_path)
+                {
+                    item.submenu_name = if sub_override.trim().is_empty() {
+                        None
+                    } else {
+                        Some(sub_override.trim().to_string())
+                    };
+                }
+                item
+            })
+            .collect();
 
-        for custom in &self.draft_custom_entries {
-            if custom.enabled {
-                items.push(BootEntryItem::from_custom_entry(custom, default_entry));
-            }
+        if !self.draft_menu_layout.order.is_empty() {
+            items.sort_by_key(|item| {
+                self.draft_menu_layout
+                    .order
+                    .iter()
+                    .position(|k| k == &item.full_path)
+                    .unwrap_or(usize::MAX)
+            });
         }
 
         items

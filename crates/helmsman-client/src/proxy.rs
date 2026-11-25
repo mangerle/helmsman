@@ -92,4 +92,10 @@ pub trait HelmsmanApi {
 
     /// 导出指定快照到目标路径
     fn export_snapshot(&self, snapshot_id: &str, dest_path: &str) -> zbus::Result<String>;
+
+    /// 读取持久化的全量菜单布局编排（JSON）
+    fn get_menu_layout(&self) -> zbus::Result<String>;
+
+    /// 提交全量菜单布局编排修改
+    fn apply_menu_layout(&self, layout_json: &str, reason: &str) -> zbus::Result<ApplyResultDto>;
 }

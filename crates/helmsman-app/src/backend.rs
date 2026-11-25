@@ -1,4 +1,4 @@
-use grub_boot_reader::CustomBootEntry;
+use grub_boot_reader::{CustomBootEntry, MenuLayout};
 use helmsman_client::{
     ApplyResultDto, CustomBootEntryDto, HelmsmanApiProxyBlocking, SnapshotDto, SystemStatusDto,
     ThemeInfoDto,
@@ -68,6 +68,8 @@ pub struct BackendSnapshot {
     pub themes: Vec<ThemeInfoDto>,
     /// 受管自定义引导项
     pub custom_entries: Vec<CustomBootEntry>,
+    /// 全量菜单编排布局
+    pub menu_layout: MenuLayout,
     /// 条目友好别名映射
     pub aliases: HashMap<String, String>,
     /// 是否处于未连接守护进程的离线演示模式
@@ -132,6 +134,7 @@ menuentry 'Windows Boot Manager (on /dev/nvme0n1p1)' --class windows --id 'ospro
             snapshots: Vec::new(),
             themes: Vec::new(),
             custom_entries: Vec::new(),
+            menu_layout: MenuLayout::default(),
             aliases: HashMap::new(),
             is_demo_mode: true,
             status_note: format!("演示模式（未连接守护进程: {reason}）"),
@@ -165,6 +168,11 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         .map(CustomBootEntry::from)
         .collect();
     let aliases = proxy.get_entry_aliases().unwrap_or_default();
+    let menu_layout = proxy
+        .get_menu_layout()
+        .ok()
+        .and_then(|raw| serde_json::from_str::<MenuLayout>(&raw).ok())
+        .unwrap_or_default();
     let status_note = format!(
         "已连接 · {} ({:?})",
         system_status.distro_name, system_status.firmware_type
@@ -177,6 +185,7 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         snapshots,
         themes,
         custom_entries,
+        menu_layout,
         aliases,
         is_demo_mode: false,
         status_note,
@@ -201,6 +210,15 @@ pub fn apply_custom_entries(
     proxy
         .apply_custom_entries(dtos, reason)
         .map_err(|e| format!("提交自定义引导项失败: {e}"))
+}
+
+/// 提交全量菜单编排布局（排序、隐藏、子菜单归组）至特权守护进程
+pub fn apply_menu_layout(layout: &MenuLayout, reason: &str) -> Result<ApplyResultDto, String> {
+    let proxy = connect_proxy()?;
+    let json = serde_json::to_string(layout).map_err(|e| format!("序列化菜单布局失败: {e}"))?;
+    proxy
+        .apply_menu_layout(&json, reason)
+        .map_err(|e| format!("提交菜单布局失败: {e}"))
 }
 
 /// 回滚至指定历史快照

@@ -40,7 +40,7 @@ pub struct CustomManager {
 
 impl CustomManager {
     /// 获取写操作互斥锁（仅在同步事务内持有）
-    fn acquire_write_lock(&self) -> MutexGuard<'_, ()> {
+    pub(crate) fn acquire_write_lock(&self) -> MutexGuard<'_, ()> {
         self.write_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

@@ -80,6 +80,7 @@ impl HelmsmanWindow {
     pub fn new(backend: BackendSnapshot, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::new_from_content(&backend.default_config, &backend.grub_cfg)
             .with_custom_entries(backend.custom_entries.clone())
+            .with_menu_layout(backend.menu_layout.clone())
             .with_aliases(backend.aliases.clone());
         let theme_url_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -319,6 +320,7 @@ impl HelmsmanWindow {
         let snapshot = BackendSnapshot::load();
         self.state = AppState::new_from_content(&snapshot.default_config, &snapshot.grub_cfg)
             .with_custom_entries(snapshot.custom_entries.clone())
+            .with_menu_layout(snapshot.menu_layout.clone())
             .with_aliases(snapshot.aliases.clone());
         self.backend = snapshot;
         self.toast = Some((true, "已重新同步最新引导配置与系统状态".to_string()));
@@ -349,6 +351,7 @@ impl HelmsmanWindow {
         if self.backend.is_demo_mode {
             self.state.original_config = self.state.draft_config.clone();
             self.state.original_custom_entries = self.state.draft_custom_entries.clone();
+            self.state.original_menu_layout = self.state.draft_menu_layout.clone();
             self.active_modal = ActiveModal::None;
             self.toast = Some((
                 true,
@@ -387,6 +390,24 @@ impl HelmsmanWindow {
                 }
                 Err(e) => {
                     warn!("提交自定义引导项失败: {e}");
+                    self.toast = Some((false, e));
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+
+        if self.state.has_menu_layout_changes() {
+            match backend::apply_menu_layout(
+                &self.state.draft_menu_layout,
+                "通过 Helmsman 桌面端更新引导菜单编排",
+            ) {
+                Ok(res) => {
+                    info!("菜单布局编排提交成功，快照 ID: {}", res.snapshot_id);
+                    ok_msgs.push("菜单编排布局已同步".to_string());
+                }
+                Err(e) => {
+                    warn!("提交菜单布局编排失败: {e}");
                     self.toast = Some((false, e));
                     cx.notify();
                     return;

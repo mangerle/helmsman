@@ -1,5 +1,5 @@
 mod apply;
-mod apply_support;
+pub(crate) mod apply_support;
 mod error;
 mod ops;
 mod theme_ops;
@@ -59,6 +59,8 @@ pub struct GrubService {
     pub lock_descriptors: Vec<LockDescriptor>,
     /// 主题存放根目录
     pub themes_dir: PathBuf,
+    /// 菜单布局编排配置文件路径
+    pub menu_layout_path: PathBuf,
     /// 进程内写操作互斥锁（串行化磁盘写入、快照与引导重建，防止并发竞态）
     write_lock: Mutex<()>,
 }
@@ -81,6 +83,7 @@ impl GrubService {
             distro_profile,
             lock_descriptors: default_system_locks(),
             themes_dir,
+            menu_layout_path: PathBuf::from("/etc/helmsman/menu_layout.json"),
             write_lock: Mutex::new(()),
         }
     }
@@ -92,12 +95,14 @@ impl GrubService {
         distro_profile: DistroProfile,
     ) -> Self {
         let themes_dir = backup_dir.join("themes");
+        let menu_layout_path = backup_dir.join("menu_layout.json");
         Self {
             default_config_path,
             backup_dir,
             distro_profile,
             lock_descriptors: Vec::new(),
             themes_dir,
+            menu_layout_path,
             write_lock: Mutex::new(()),
         }
     }

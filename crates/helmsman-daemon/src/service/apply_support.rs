@@ -2,7 +2,9 @@ use crate::executor::SafeCommand;
 use crate::service::{
     DEFAULT_UPDATE_TIMEOUT_SECS, DaemonError, GrubService, TransactionOptions, TransactionResult,
 };
-use grub_transaction_engine::{SnapshotMeta, restore_snapshot};
+use grub_boot_reader::{MenuLayout, apply_menu_layout_to_grub_cfg};
+use grub_transaction_engine::{SnapshotMeta, atomic_write, restore_snapshot};
+use std::fs;
 use std::path::Path;
 use tracing::{info, warn};
 
@@ -59,25 +61,34 @@ pub(crate) fn execute_update_with_rollback(
             let combined_log = format!("{}\n{}", stdout, stderr);
 
             if output.status.success() {
-                if !options.skip_syntax_check {
-                    let target_path = Path::new(&service.distro_profile.config_path);
-                    if target_path.exists()
-                        && let Err(syntax_err) = verify_grub_script_syntax(service, target_path)
-                    {
-                        warn!(
-                            "引导脚本语法校验未通过，触发自动回滚，快照 ID: {}，原因: {}",
-                            snapshot.id, syntax_err
-                        );
-                        let rollback_err = restore_snapshot(snapshot)
-                            .err()
-                            .map(|e| format!("且自动回滚失败: {}", e))
-                            .unwrap_or_else(|| "已成功自动回滚至初始状态".to_string());
+                let target_path = Path::new(&service.distro_profile.config_path);
+                if target_path.exists()
+                    && let Err(layout_err) = apply_persisted_menu_layout(service, target_path)
+                {
+                    let _ = restore_snapshot(snapshot);
+                    return Err(DaemonError::CommandLaunchFailed {
+                        command: service.distro_profile.update_command.clone(),
+                        reason: format!("应用菜单编排布局失败（已自动回滚）: {layout_err}"),
+                    });
+                }
 
-                        return Err(DaemonError::CommandLaunchFailed {
-                            command: service.distro_profile.update_command.clone(),
-                            reason: format!("{}, {}", syntax_err, rollback_err),
-                        });
-                    }
+                if !options.skip_syntax_check
+                    && target_path.exists()
+                    && let Err(syntax_err) = verify_grub_script_syntax(service, target_path)
+                {
+                    warn!(
+                        "引导脚本语法校验未通过，触发自动回滚，快照 ID: {}，原因: {}",
+                        snapshot.id, syntax_err
+                    );
+                    let rollback_err = restore_snapshot(snapshot)
+                        .err()
+                        .map(|e| format!("且自动回滚失败: {}", e))
+                        .unwrap_or_else(|| "已成功自动回滚至初始状态".to_string());
+
+                    return Err(DaemonError::CommandLaunchFailed {
+                        command: service.distro_profile.update_command.clone(),
+                        reason: format!("{}, {}", syntax_err, rollback_err),
+                    });
                 }
 
                 info!(
@@ -120,4 +131,22 @@ pub(crate) fn execute_update_with_rollback(
             })
         }
     }
+}
+
+/// 若存在非空菜单编排规则，则在 `update-grub` 生成后非破坏性地重排 `grub.cfg`
+fn apply_persisted_menu_layout(service: &GrubService, target_path: &Path) -> Result<(), String> {
+    if !service.menu_layout_path.exists() {
+        return Ok(());
+    }
+    let raw_json = fs::read_to_string(&service.menu_layout_path)
+        .map_err(|e| format!("读取菜单布局配置失败: {e}"))?;
+    let layout: MenuLayout =
+        serde_json::from_str(&raw_json).map_err(|e| format!("解析菜单布局配置失败: {e}"))?;
+    if layout.is_empty() {
+        return Ok(());
+    }
+    let cfg_text =
+        fs::read_to_string(target_path).map_err(|e| format!("读取引导菜单文件失败: {e}"))?;
+    let arranged = apply_menu_layout_to_grub_cfg(&cfg_text, &layout);
+    atomic_write(target_path, &arranged).map_err(|e| format!("原子写回重排后的引导菜单失败: {e}"))
 }

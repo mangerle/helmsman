@@ -128,11 +128,15 @@ fn render_apply_diff_modal(
                 .overflow_y_scrollbar()
                 .when(parsed_diff.lines.is_empty(), |el| {
                     el.child(
-                        Label::new(if win.state.has_custom_entry_changes() {
-                            "仅包含自定义引导条目变更（/etc/grub.d/41_helmsman_custom）。"
-                        } else {
-                            "无文本行级变更。"
-                        })
+                        Label::new(
+                            if win.state.has_custom_entry_changes()
+                                || win.state.has_menu_layout_changes()
+                            {
+                                "包含自定义引导条目或菜单编排布局变更。"
+                            } else {
+                                "无文本行级变更。"
+                            },
+                        )
                         .text_xs()
                         .text_color(cx.theme().muted_foreground),
                     )

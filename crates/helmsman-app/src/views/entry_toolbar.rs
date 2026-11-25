@@ -1,48 +1,37 @@
 use crate::app::HelmsmanWindow;
 use crate::views::setting_row;
+use gpui_kit::assets::IconName as AssetIcon;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _};
+use gpui_kit::component::label::Label;
+use gpui_kit::component::tag::{Tag, TagVariant};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, StyledExt as _};
 use gpui_kit::*;
 
-/// 渲染左侧引导菜单的快捷调整工具栏（对齐参考工具栏中的移除、排序与子菜单归组操作）
+/// 渲染左侧引导菜单的快捷调整工具栏（支持所有可见的系统/自定义条目）
 pub fn render_entry_action_bar(
     win: &HelmsmanWindow,
     cx: &mut Context<HelmsmanWindow>,
 ) -> impl IntoElement {
-    let selected = win.state.get_selected_entry();
-    let selected_path = selected.map(|e| e.full_path.clone());
+    let items = win.state.get_entry_items();
+    let selected_path = win.state.get_selected_entry().map(|e| e.full_path.clone());
+    let selected_idx = selected_path
+        .as_deref()
+        .and_then(|p| items.iter().position(|item| item.full_path == p));
 
-    // 在受管自定义条目列表中查找当前选中项的位置与子菜单状态
-    let custom_match = selected.and_then(|entry| {
-        let entry_id = entry.id.as_deref()?;
-        win.state
-            .draft_custom_entries
-            .iter()
-            .enumerate()
-            .find(|(_, c)| c.id == entry_id)
-            .map(|(idx, c)| (idx, c.id.clone(), !c.submenu_title.is_empty()))
-    });
+    let has_selected = selected_path.is_some();
+    let can_up = selected_idx.is_some_and(|i| i > 0);
+    let can_down = selected_idx.is_some_and(|i| i + 1 < items.len());
+    let in_submenu = selected_path
+        .as_deref()
+        .is_some_and(|p| win.state.is_entry_in_submenu(p));
 
-    let custom_len = win.state.draft_custom_entries.len();
-    let (can_remove, can_up, can_down, can_to_root, can_to_sub, custom_id) = match custom_match {
-        Some((idx, id, in_submenu)) => (
-            true,
-            idx > 0,
-            idx + 1 < custom_len,
-            in_submenu,
-            !in_submenu,
-            id,
-        ),
-        None => (false, false, false, false, false, String::new()),
-    };
-
-    let id_remove = custom_id.clone();
-    let id_up = custom_id.clone();
-    let id_down = custom_id.clone();
-    let id_root = custom_id.clone();
-    let id_sub = custom_id;
-    let default_path = selected_path.clone().unwrap_or_default();
+    let path_remove = selected_path.clone().unwrap_or_default();
+    let path_up = selected_path.clone().unwrap_or_default();
+    let path_down = selected_path.clone().unwrap_or_default();
+    let path_root = selected_path.clone().unwrap_or_default();
+    let path_sub = selected_path.clone().unwrap_or_default();
+    let path_default = selected_path.unwrap_or_default();
 
     div()
         .flex()
@@ -58,31 +47,33 @@ pub fn render_entry_action_bar(
                 .child(
                     Button::new("toolbar-remove-entry")
                         .ghost()
-                        .xsmall()
-                        .icon(IconName::Delete)
-                        .tooltip("移除选中的自定义引导条目（系统条目受保护不可删除）")
-                        .disabled(!can_remove)
+                        .small()
+                        .icon(AssetIcon::Trash)
+                        .tooltip("移除（隐藏）当前选中的引导条目，可在下方列表恢复")
+                        .disabled(!has_selected)
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            if this.state.remove_custom_entry(&id_remove) {
+                            if this.state.hide_entry(&path_remove) {
                                 this.toast = Some((
                                     true,
-                                    format!("已移除自定义条目 '{id_remove}'（审核保存后生效）"),
+                                    format!(
+                                        "已移除条目 '{path_remove}'（可在下方“已移除的条目”一键恢复）"
+                                    ),
                                 ));
                             }
                             cx.notify();
                         })),
                 )
-                .child(div().w(px(1.0)).h(px(14.0)).bg(cx.theme().border))
+                .child(div().w(px(1.0)).h(px(16.0)).bg(cx.theme().border))
                 .child(
                     Button::new("toolbar-move-up")
                         .ghost()
-                        .xsmall()
-                        .icon(IconName::ArrowUp)
-                        .tooltip("将自定义条目上移一位")
+                        .small()
+                        .icon(AssetIcon::ArrowUp)
+                        .tooltip("将当前选中条目上移一位")
                         .disabled(!can_up)
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            if this.state.move_custom_entry_up(&id_up) {
-                                this.toast = Some((true, "已将自定义条目上移一位".to_string()));
+                            if this.state.move_entry_up(&path_up) {
+                                this.toast = Some((true, "已将引导条目上移一位".to_string()));
                             }
                             cx.notify();
                         })),
@@ -90,27 +81,27 @@ pub fn render_entry_action_bar(
                 .child(
                     Button::new("toolbar-move-down")
                         .ghost()
-                        .xsmall()
-                        .icon(IconName::ArrowDown)
-                        .tooltip("将自定义条目下移一位")
+                        .small()
+                        .icon(AssetIcon::ArrowDown)
+                        .tooltip("将当前选中条目下移一位")
                         .disabled(!can_down)
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            if this.state.move_custom_entry_down(&id_down) {
-                                this.toast = Some((true, "已将自定义条目下移一位".to_string()));
+                            if this.state.move_entry_down(&path_down) {
+                                this.toast = Some((true, "已将引导条目下移一位".to_string()));
                             }
                             cx.notify();
                         })),
                 )
-                .child(div().w(px(1.0)).h(px(14.0)).bg(cx.theme().border))
+                .child(div().w(px(1.0)).h(px(16.0)).bg(cx.theme().border))
                 .child(
                     Button::new("toolbar-to-root")
                         .ghost()
-                        .xsmall()
-                        .icon(IconName::ChevronLeft)
+                        .small()
+                        .icon(AssetIcon::ListIndentDecrease)
                         .tooltip("移出子菜单至主菜单根层级")
-                        .disabled(!can_to_root)
+                        .disabled(!has_selected || !in_submenu)
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            if this.state.move_custom_entry_to_root(&id_root) {
+                            if this.state.move_entry_to_root(&path_root) {
                                 this.toast = Some((true, "已移回主菜单根层级".to_string()));
                             }
                             cx.notify();
@@ -119,17 +110,17 @@ pub fn render_entry_action_bar(
                 .child(
                     Button::new("toolbar-to-submenu")
                         .ghost()
-                        .xsmall()
-                        .icon(IconName::ChevronRight)
-                        .tooltip("归组移入“自定义引导项”子菜单")
-                        .disabled(!can_to_sub)
+                        .small()
+                        .icon(AssetIcon::ListIndentIncrease)
+                        .tooltip("归组移入“更多系统与工具”子菜单")
+                        .disabled(!has_selected || in_submenu)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if this
                                 .state
-                                .move_custom_entry_to_submenu(&id_sub, "自定义引导项")
+                                .move_entry_to_submenu(&path_sub, "更多系统与工具")
                             {
                                 this.toast =
-                                    Some((true, "已归组移入“自定义引导项”子菜单".to_string()));
+                                    Some((true, "已归组移入“更多系统与工具”子菜单".to_string()));
                             }
                             cx.notify();
                         })),
@@ -138,15 +129,17 @@ pub fn render_entry_action_bar(
         .child(
             Button::new("toolbar-set-default")
                 .outline()
-                .xsmall()
-                .icon(IconName::Check)
+                .small()
+                .icon(AssetIcon::Check)
                 .label("设为默认")
-                .disabled(selected_path.is_none())
+                .disabled(!has_selected)
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    match this.state.set_default_entry_semantic(&default_path) {
+                    match this.state.set_default_entry_semantic(&path_default) {
                         Ok(()) => {
-                            this.toast =
-                                Some((true, format!("已将 '{default_path}' 设为默认启动项草稿")));
+                            this.toast = Some((
+                                true,
+                                format!("已将 '{path_default}' 设为默认启动项草稿"),
+                            ));
                         }
                         Err(e) => {
                             this.toast = Some((false, e.to_string()));
@@ -155,6 +148,77 @@ pub fn render_entry_action_bar(
                     cx.notify();
                 })),
         )
+}
+
+/// 渲染“已移除的条目”暂存恢复面板（对齐参考图右侧的恢复能力）
+pub fn render_hidden_entries_panel(
+    win: &HelmsmanWindow,
+    cx: &mut Context<HelmsmanWindow>,
+) -> impl IntoElement {
+    let hidden = win.state.list_hidden_entries();
+    if hidden.is_empty() {
+        return div().into_any_element();
+    }
+
+    div()
+        .flex()
+        .flex_col()
+        .gap_1p5()
+        .px_3()
+        .py_2p5()
+        .border_t_1()
+        .border_color(cx.theme().border.opacity(0.65))
+        .bg(cx.theme().secondary.opacity(0.35))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    Label::new("已移除的条目")
+                        .text_xs()
+                        .font_semibold()
+                        .text_color(cx.theme().muted_foreground),
+                )
+                .child(
+                    Tag::new()
+                        .with_variant(TagVariant::Secondary)
+                        .xsmall()
+                        .child(format!("{}", hidden.len())),
+                ),
+        )
+        .children(hidden.into_iter().enumerate().map(|(idx, item)| {
+            let restore_path = item.full_path.clone();
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .bg(cx.theme().background.opacity(0.7))
+                .child(
+                    Label::new(item.display_title)
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground),
+                )
+                .child(
+                    Button::new(("restore-entry", idx))
+                        .ghost()
+                        .xsmall()
+                        .icon(AssetIcon::Undo2)
+                        .label("恢复")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if this.state.restore_entry(&restore_path) {
+                                this.toast =
+                                    Some((true, format!("已恢复引导条目 '{restore_path}'")));
+                            }
+                            cx.notify();
+                        })),
+                )
+        }))
+        .into_any_element()
 }
 
 /// 渲染受管自定义条目的 GRUB 菜单显示名称编辑行（实际写入 41_helmsman_custom）

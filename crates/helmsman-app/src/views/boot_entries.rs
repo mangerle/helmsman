@@ -1,5 +1,7 @@
 use crate::app::HelmsmanWindow;
-use crate::views::entry_toolbar::{render_custom_title_row, render_entry_action_bar};
+use crate::views::entry_toolbar::{
+    render_custom_title_row, render_entry_action_bar, render_hidden_entries_panel,
+};
 use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
@@ -208,9 +210,12 @@ fn render_entry_list_pane(
                                                 .font_semibold(),
                                         )
                                         .child(
-                                            Label::new(item.full_path.clone())
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground),
+                                            Label::new(match &item.submenu_name {
+                                                Some(sub) => format!("子菜单: {sub}"),
+                                                None => item.full_path.clone(),
+                                            })
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground),
                                         ),
                                 ),
                         )
@@ -256,6 +261,7 @@ fn render_entry_list_pane(
                         )
                 })),
         )
+        .child(render_hidden_entries_panel(win, cx))
         .child(
             div()
                 .px_4()

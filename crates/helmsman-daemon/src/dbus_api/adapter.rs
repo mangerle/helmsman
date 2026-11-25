@@ -601,4 +601,46 @@ impl HelmsmanDbusAdapter {
         .await?;
         Ok(exported.to_string_lossy().into_owned())
     }
+
+    /// 读取持久化的全量菜单布局编排（JSON 字符串）
+    pub async fn get_menu_layout(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<String, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        let custom_manager = Arc::clone(&self.custom_manager);
+        spawn_service_task("菜单布局读取任务", move || {
+            let layout = custom_manager.load_menu_layout();
+            serde_json::to_string(&layout)
+                .map_err(|e| HelmsmanDbusError::Failed(format!("序列化菜单布局失败: {e}")))
+        })
+        .await
+    }
+
+    /// 提交全量菜单布局编排修改（受 Polkit apply-changes 权限保护）
+    pub async fn apply_menu_layout(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        layout_json: &str,
+        reason: &str,
+    ) -> Result<ApplyResultDto, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
+            .await?;
+        let layout: grub_boot_reader::MenuLayout = serde_json::from_str(layout_json)
+            .map_err(|e| HelmsmanDbusError::InvalidArgs(format!("菜单布局 JSON 无效: {e}")))?;
+        let custom_manager = Arc::clone(&self.custom_manager);
+        let service = Arc::clone(&self.service);
+        let options = self.options.clone();
+        let reason = reason.to_string();
+        let result = spawn_service_task("菜单布局提交任务", move || {
+            custom_manager.save_menu_layout_as(&service, &layout, &reason, &options, caller_uid)
+        })
+        .await?;
+        Ok(to_apply_dto(result))
+    }
 }

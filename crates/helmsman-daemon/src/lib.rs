@@ -3,6 +3,7 @@ pub mod custom_manager;
 pub mod dbus_api;
 pub mod executor;
 pub mod idle;
+pub mod layout_manager;
 pub mod polkit;
 pub mod server;
 pub mod service;

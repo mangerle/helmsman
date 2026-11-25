@@ -18,6 +18,8 @@ pub struct BootEntryItem {
     pub is_recovery: bool,
     /// 是否为受管的自定义引导条目（如 41_helmsman_custom）
     pub is_custom: bool,
+    /// 当前所属子菜单名称（若处于根层级则为 `None`）
+    pub submenu_name: Option<String>,
     /// 探测到的内核版本号（若可提取）
     pub kernel_version: Option<String>,
 }
@@ -60,6 +62,11 @@ impl BootEntryItem {
             entry.title.clone()
         };
 
+        let submenu_name = entry
+            .full_path
+            .split_once('>')
+            .map(|(sub, _)| sub.to_string());
+
         Self {
             id: entry.id.clone(),
             full_path: entry.full_path.clone(),
@@ -68,6 +75,7 @@ impl BootEntryItem {
             is_default,
             is_recovery,
             is_custom: false,
+            submenu_name,
             kernel_version,
         }
     }
@@ -85,6 +93,12 @@ impl BootEntryItem {
             None => false,
         };
 
+        let submenu_name = if custom.submenu_title.trim().is_empty() {
+            None
+        } else {
+            Some(custom.submenu_title.clone())
+        };
+
         Self {
             id: Some(custom.id.clone()),
             full_path: custom.title.clone(),
@@ -93,6 +107,7 @@ impl BootEntryItem {
             is_default,
             is_recovery: false,
             is_custom: true,
+            submenu_name,
             kernel_version: None,
         }
     }

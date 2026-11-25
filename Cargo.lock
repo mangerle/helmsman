@@ -3228,6 +3228,7 @@ dependencies = [
  "helmsman-ui",
  "helmsman-updater",
  "reqwest 0.12.28",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
