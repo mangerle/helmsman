@@ -1,4 +1,5 @@
 use crate::app::HelmsmanWindow;
+use crate::views::app_logo_image;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
 use gpui_kit::component::tag::{Tag, TagVariant};
@@ -38,15 +39,10 @@ pub fn render_topbar(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> 
                 .items_center()
                 .gap_3()
                 .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
+                    img(app_logo_image())
                         .size(px(30.0))
                         .rounded_lg()
-                        .bg(cx.theme().primary.opacity(0.16))
-                        .text_color(cx.theme().primary)
-                        .child(IconName::Cpu),
+                        .flex_shrink_0(),
                 )
                 .child(
                     Label::new("Helmsman")

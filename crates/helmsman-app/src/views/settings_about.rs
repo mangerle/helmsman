@@ -1,8 +1,12 @@
 use crate::app::{AppUpdateStatus, HelmsmanWindow};
-use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
+use crate::views::{
+    app_logo_image, kv_row, page_header, scroll_page_container, section_card, setting_row,
+};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, IconName, Sizable as _};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, IconName, Sizable as _, StyledExt as _,
+};
 use gpui_kit::*;
 use helmsman_ui::{FontScale, ThemeMode};
 
@@ -89,6 +93,36 @@ pub fn render_about(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> i
         .child(render_update_section(win, cx))
         .child(
             section_card("关于 Helmsman", cx)
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .pb_2()
+                        .child(
+                            img(app_logo_image())
+                                .size(px(44.0))
+                                .rounded_xl()
+                                .flex_shrink_0(),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_0p5()
+                                .child(
+                                    Label::new("Helmsman")
+                                        .text_base()
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground),
+                                )
+                                .child(
+                                    Label::new("现代化 Linux GRUB 引导与主题安全管理控制台")
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground),
+                                ),
+                        ),
+                )
                 .child(kv_row("应用版本", env!("CARGO_PKG_VERSION"), cx))
                 .child(kv_row("图形渲染引擎", "gpui-kit 0.11 (GPU 加速)", cx))
                 .child(kv_row(

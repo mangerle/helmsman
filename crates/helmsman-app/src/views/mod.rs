@@ -10,6 +10,19 @@ use gpui_kit::component::label::Label;
 use gpui_kit::component::scroll::{Scrollable, ScrollableElement as _};
 use gpui_kit::component::{ActiveTheme as _, StyledExt as _};
 use gpui_kit::*;
+use std::sync::{Arc, OnceLock};
+
+/// 获取应用内置矢量 Logo 图像（全局缓存单例，避免重复分配）
+pub fn app_logo_image() -> Arc<Image> {
+    static LOGO: OnceLock<Arc<Image>> = OnceLock::new();
+    LOGO.get_or_init(|| {
+        Arc::new(Image::from_bytes(
+            ImageFormat::Svg,
+            include_bytes!("../../../../assets/logo.svg").to_vec(),
+        ))
+    })
+    .clone()
+}
 
 /// 现代页面统一头部（大标题 + 副标题 + 可选右侧操作）
 pub fn page_header<V>(
