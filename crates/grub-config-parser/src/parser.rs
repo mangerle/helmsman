@@ -68,28 +68,12 @@ fn parse_value_and_comment(raw_val: &str) -> Option<(String, QuoteType, Option<S
 
     // 双引号包裹
     if let Some(stripped) = raw_val.strip_prefix('"') {
-        if let Some(end_quote) = find_closing_quote(stripped, '"') {
-            let value = stripped[..end_quote].to_string();
-            let remainder = stripped[end_quote + 1..].trim();
-            let trailing_comment = extract_trailing_comment(remainder);
-            return Some((value, QuoteType::Double, trailing_comment));
-        } else {
-            // 开头有双引号但未找到闭合双引号，属于语法未闭合
-            return None;
-        }
+        return parse_quoted_value(stripped, '"', QuoteType::Double);
     }
 
     // 单引号包裹
     if let Some(stripped) = raw_val.strip_prefix('\'') {
-        if let Some(end_quote) = find_closing_quote(stripped, '\'') {
-            let value = stripped[..end_quote].to_string();
-            let remainder = stripped[end_quote + 1..].trim();
-            let trailing_comment = extract_trailing_comment(remainder);
-            return Some((value, QuoteType::Single, trailing_comment));
-        } else {
-            // 开头有单引号但未找到闭合单引号，属于语法未闭合
-            return None;
-        }
+        return parse_quoted_value(stripped, '\'', QuoteType::Single);
     }
 
     // 无引号情况（处理行尾注释）
@@ -100,6 +84,19 @@ fn parse_value_and_comment(raw_val: &str) -> Option<(String, QuoteType, Option<S
     } else {
         Some((raw_val.trim_end().to_string(), QuoteType::None, None))
     }
+}
+
+/// 解析带引号的值及行尾注释；若未找到闭合引号则返回 `None`
+fn parse_quoted_value(
+    stripped: &str,
+    quote_char: char,
+    quote_type: QuoteType,
+) -> Option<(String, QuoteType, Option<String>)> {
+    let end_quote = find_closing_quote(stripped, quote_char)?;
+    let value = stripped[..end_quote].to_string();
+    let remainder = stripped[end_quote + 1..].trim();
+    let trailing_comment = extract_trailing_comment(remainder);
+    Some((value, quote_type, trailing_comment))
 }
 
 /// 寻找闭合引号（忽略转义引号）
