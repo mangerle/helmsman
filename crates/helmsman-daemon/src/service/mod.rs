@@ -14,6 +14,15 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
+/// 默认备份根目录
+pub const DEFAULT_BACKUP_DIR: &str = "/var/backups/grub-manager";
+/// 默认快照历史保留数量上限
+pub const DEFAULT_SNAPSHOT_RETENTION: usize = 20;
+/// 事务落盘前要求的最小可用磁盘空间（10 MiB）
+pub const MIN_REQUIRED_DISK_SPACE_BYTES: u64 = 10 * 1024 * 1024;
+/// 引导生成命令默认超时秒数
+pub const DEFAULT_UPDATE_TIMEOUT_SECS: u64 = 60;
+
 /// 事务应用选项配置
 #[derive(Debug, Clone, Default)]
 pub struct TransactionOptions {
@@ -68,7 +77,7 @@ impl GrubService {
         let themes_dir = distro_profile.themes_dir();
         Self {
             default_config_path: PathBuf::from("/etc/default/grub"),
-            backup_dir: PathBuf::from("/var/backups/grub-manager"),
+            backup_dir: PathBuf::from(DEFAULT_BACKUP_DIR),
             distro_profile,
             lock_descriptors: default_system_locks(),
             themes_dir,

@@ -65,6 +65,9 @@ const DANGEROUS_CHARS: &[char] = &['\n', '\r', ';', '&', '|', '`', '$', '(', ')'
 /// 默认命令执行超时秒数：防止 grub 工具假死卡住守护进程
 pub const DEFAULT_COMMAND_TIMEOUT_SECS: u64 = 30;
 
+/// 单个子进程标准输出/标准错误最大缓存字节数（4 MiB），防止异常输出引发 OOM
+const MAX_COMMAND_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
+
 /// 受白名单严格限制的安全命令构建器
 ///
 /// # 设计原理
@@ -156,22 +159,12 @@ impl SafeCommand {
         let mut stdout_handle = None;
         let mut stderr_handle = None;
 
-        if let Some(mut out) = child.stdout.take() {
-            stdout_handle = Some(std::thread::spawn(move || {
-                let mut buf = Vec::new();
-                use std::io::Read;
-                let _ = out.read_to_end(&mut buf);
-                buf
-            }));
+        if let Some(out) = child.stdout.take() {
+            stdout_handle = Some(std::thread::spawn(move || read_bounded_pipe(out)));
         }
 
-        if let Some(mut err) = child.stderr.take() {
-            stderr_handle = Some(std::thread::spawn(move || {
-                let mut buf = Vec::new();
-                use std::io::Read;
-                let _ = err.read_to_end(&mut buf);
-                buf
-            }));
+        if let Some(err) = child.stderr.take() {
+            stderr_handle = Some(std::thread::spawn(move || read_bounded_pipe(err)));
         }
 
         let start = std::time::Instant::now();
@@ -210,6 +203,18 @@ impl SafeCommand {
             }
         }
     }
+}
+
+/// 从子进程管道有界读取输出（超出上限后丢弃尾部字节，防止 OOM 同时避免管道写端阻塞）
+fn read_bounded_pipe<R: io::Read>(mut reader: R) -> Vec<u8> {
+    use io::Read;
+    let mut buf = Vec::with_capacity(4096);
+    let _ = (&mut reader)
+        .take(MAX_COMMAND_OUTPUT_BYTES)
+        .read_to_end(&mut buf);
+    let mut sink = io::sink();
+    let _ = io::copy(&mut reader, &mut sink);
+    buf
 }
 
 /// 检查程序是否在受信任白名单中（仅绝对路径精确匹配）

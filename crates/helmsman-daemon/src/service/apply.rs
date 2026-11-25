@@ -1,6 +1,9 @@
 use crate::audit::{AuditAction, resolve_caller_uid, with_audit};
 use crate::service::apply_support::execute_update_with_rollback;
-use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
+use crate::service::{
+    DEFAULT_SNAPSHOT_RETENTION, DaemonError, GrubService, MIN_REQUIRED_DISK_SPACE_BYTES,
+    TransactionOptions, TransactionResult,
+};
 use grub_transaction_engine::{
     atomic_write, check_disk_space, check_package_manager_locks, create_snapshot,
     generate_unified_diff, prune_snapshots,
@@ -86,12 +89,11 @@ impl GrubService {
             }
         })?;
 
-        let min_disk_space_bytes = 10 * 1024 * 1024;
-        check_disk_space(&self.default_config_path, min_disk_space_bytes)?;
+        check_disk_space(&self.default_config_path, MIN_REQUIRED_DISK_SPACE_BYTES)?;
 
         let target_boot_path = Path::new(&self.distro_profile.config_path);
         if target_boot_path.exists() {
-            check_disk_space(target_boot_path, min_disk_space_bytes)?;
+            check_disk_space(target_boot_path, MIN_REQUIRED_DISK_SPACE_BYTES)?;
         }
 
         debug!("开始准备配置变更事务，原因: {}", reason);
@@ -102,7 +104,7 @@ impl GrubService {
             })?;
 
         // 有界保留快照，防止备份目录无限膨胀
-        if let Err(e) = prune_snapshots(&self.backup_dir, 20) {
+        if let Err(e) = prune_snapshots(&self.backup_dir, DEFAULT_SNAPSHOT_RETENTION) {
             tracing::warn!("裁剪历史快照失败，原因: {}", e);
         }
 

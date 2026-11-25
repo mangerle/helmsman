@@ -1,6 +1,6 @@
 use crate::audit::{AuditAction, resolve_caller_uid, with_audit};
 use crate::executor::SafeCommand;
-use crate::service::{DaemonError, GrubService, TransactionOptions};
+use crate::service::{DEFAULT_UPDATE_TIMEOUT_SECS, DaemonError, GrubService, TransactionOptions};
 use grub_config_parser::parse_grub_config;
 use grub_transaction_engine::{
     check_package_manager_locks, delete_snapshot, diff_snapshot_against_target, export_snapshot,
@@ -64,7 +64,9 @@ impl GrubService {
                     .map_err(DaemonError::SecurityCheckFailed)?;
 
                 let rebuild_output = rebuild_cmd
-                    .output_with_timeout(std::time::Duration::from_secs(60))
+                    .output_with_timeout(std::time::Duration::from_secs(
+                        DEFAULT_UPDATE_TIMEOUT_SECS,
+                    ))
                     .map_err(|e| DaemonError::CommandLaunchFailed {
                         command: self.distro_profile.update_command.clone(),
                         reason: format!("快照已还原但引导重建失败: {e}"),

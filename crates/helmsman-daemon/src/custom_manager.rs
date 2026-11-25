@@ -1,5 +1,8 @@
 use crate::audit::{AuditAction, AuditEvent, record_audit_event, resolve_caller_uid, with_audit};
-use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
+use crate::service::{
+    DEFAULT_BACKUP_DIR, DEFAULT_SNAPSHOT_RETENTION, DaemonError, GrubService,
+    MIN_REQUIRED_DISK_SPACE_BYTES, TransactionOptions, TransactionResult,
+};
 use grub_boot_reader::{CustomBootEntry, generate_custom_script, parse_custom_script};
 use grub_transaction_engine::{
     atomic_write, check_disk_space, create_snapshot, prune_snapshots, restore_snapshot,
@@ -48,7 +51,7 @@ impl CustomManager {
         Self {
             custom_script_path: PathBuf::from(DEFAULT_CUSTOM_SCRIPT_PATH),
             aliases_path: PathBuf::from(DEFAULT_ALIASES_PATH),
-            backup_dir: PathBuf::from("/var/backups/grub-manager"),
+            backup_dir: PathBuf::from(DEFAULT_BACKUP_DIR),
             write_lock: Mutex::new(()),
         }
     }
@@ -139,7 +142,7 @@ impl CustomManager {
                 }
 
                 // 检查可用磁盘空间
-                check_disk_space(&self.custom_script_path, 10 * 1024 * 1024)
+                check_disk_space(&self.custom_script_path, MIN_REQUIRED_DISK_SPACE_BYTES)
                     .map_err(DaemonError::DiskSpaceInsufficient)?;
 
                 // 若已有文件则创建快照，失败或更新失败时用于回滚自定义脚本本身
@@ -151,7 +154,7 @@ impl CustomManager {
                                 reason: e.to_string(),
                             })?;
                     // 有界保留快照，防止备份目录无限膨胀
-                    if let Err(e) = prune_snapshots(&self.backup_dir, 20) {
+                    if let Err(e) = prune_snapshots(&self.backup_dir, DEFAULT_SNAPSHOT_RETENTION) {
                         tracing::warn!("裁剪历史快照失败，原因: {}", e);
                     }
                     let id = snapshot.id.clone();

@@ -1,5 +1,7 @@
 use crate::executor::SafeCommand;
-use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
+use crate::service::{
+    DEFAULT_UPDATE_TIMEOUT_SECS, DaemonError, GrubService, TransactionOptions, TransactionResult,
+};
 use grub_transaction_engine::{SnapshotMeta, restore_snapshot};
 use std::path::Path;
 use tracing::{info, warn};
@@ -45,7 +47,11 @@ pub(crate) fn execute_update_with_rollback(
         }
     };
 
-    let timeout = std::time::Duration::from_secs(options.timeout_seconds.unwrap_or(60));
+    let timeout = std::time::Duration::from_secs(
+        options
+            .timeout_seconds
+            .unwrap_or(DEFAULT_UPDATE_TIMEOUT_SECS),
+    );
     match cmd.output_with_timeout(timeout) {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
