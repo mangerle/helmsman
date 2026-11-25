@@ -16,7 +16,7 @@ pub struct DiffReport {
 /// # 设计原理
 /// - **实现初衷**：为前端“保存前差异审核弹窗”提供标准的 Unified Diff 视图。
 ///   配置文件通常在百行以内，经典的动态规划 LCS 算法具备最高的可靠性与精准度。
-/// - **核心优势**：纯标准库实现，零外部 crate 依赖；输出与系统 `diff -u` 格式完全一致。
+/// - **核心优势**：纯标准库实现，零外部 crate 依赖；采用一维连续数组存储 DP 表，消除二维嵌套分配与未变更行的冗余字符串构造。
 /// - **代价与局限**：时间与空间复杂度为 O(N*M)，适合配置文件对比；针对超大文本（数万行）需采用 Myers 算法。
 pub fn generate_unified_diff(original: &str, modified: &str) -> DiffReport {
     if original == modified {
@@ -30,16 +30,17 @@ pub fn generate_unified_diff(original: &str, modified: &str) -> DiffReport {
 
     let orig_lines: Vec<&str> = original.lines().collect();
     let mod_lines: Vec<&str> = modified.lines().collect();
+    let cols = mod_lines.len() + 1;
 
-    let dp = build_lcs_matrix(&orig_lines, &mod_lines);
-    let (diff_lines, added_count, removed_count) = backtrack_lcs_diff(&orig_lines, &mod_lines, &dp);
+    let dp = build_lcs_table(&orig_lines, &mod_lines, cols);
+    let (diff_lines, added_count, removed_count) =
+        backtrack_lcs_changes(&orig_lines, &mod_lines, &dp, cols);
 
-    let mut output = String::with_capacity(diff_lines.len().saturating_mul(32));
+    let total_bytes: usize = diff_lines.iter().map(|s| s.len() + 1).sum();
+    let mut output = String::with_capacity(total_bytes);
     for line in &diff_lines {
-        if line.starts_with('+') || line.starts_with('-') {
-            output.push_str(line);
-            output.push('\n');
-        }
+        output.push_str(line);
+        output.push('\n');
     }
 
     DiffReport {
@@ -50,32 +51,34 @@ pub fn generate_unified_diff(original: &str, modified: &str) -> DiffReport {
     }
 }
 
-/// 动态规划构建 LCS 匹配长度矩阵
-fn build_lcs_matrix(orig: &[&str], modif: &[&str]) -> Vec<Vec<usize>> {
+/// 动态规划构建一维连续内存 LCS 匹配长度表
+fn build_lcs_table(orig: &[&str], modif: &[&str], cols: usize) -> Vec<usize> {
     let n = orig.len();
-    let m = modif.len();
-    let mut dp = vec![vec![0usize; m + 1]; n + 1];
+    let mut dp = vec![0usize; (n + 1) * cols];
 
-    for i in 0..n {
-        for j in 0..m {
-            if orig[i] == modif[j] {
-                dp[i + 1][j + 1] = dp[i][j] + 1;
+    for (i, orig_line) in orig.iter().enumerate() {
+        let row = i * cols;
+        let next_row = (i + 1) * cols;
+        for (j, mod_line) in modif.iter().enumerate() {
+            dp[next_row + j + 1] = if orig_line == mod_line {
+                dp[row + j] + 1
             } else {
-                dp[i + 1][j + 1] = dp[i + 1][j].max(dp[i][j + 1]);
-            }
+                dp[next_row + j].max(dp[row + j + 1])
+            };
         }
     }
 
     dp
 }
 
-/// 基于 LCS 矩阵回溯生成行级增删标记
-fn backtrack_lcs_diff(
+/// 基于一维 LCS 表回溯生成行级增删标记（跳过未变更行，避免无效字符串分配）
+fn backtrack_lcs_changes(
     orig: &[&str],
     modif: &[&str],
-    dp: &[Vec<usize>],
+    dp: &[usize],
+    cols: usize,
 ) -> (Vec<String>, usize, usize) {
-    let mut diff_lines = Vec::with_capacity(orig.len().saturating_add(modif.len()));
+    let mut diff_lines = Vec::new();
     let mut i = orig.len();
     let mut j = modif.len();
     let mut added_count = 0;
@@ -83,14 +86,13 @@ fn backtrack_lcs_diff(
 
     while i > 0 || j > 0 {
         if i > 0 && j > 0 && orig[i - 1] == modif[j - 1] {
-            diff_lines.push(format!(" {}", orig[i - 1]));
             i -= 1;
             j -= 1;
-        } else if j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j]) {
+        } else if j > 0 && (i == 0 || dp[i * cols + j - 1] >= dp[(i - 1) * cols + j]) {
             diff_lines.push(format!("+{}", modif[j - 1]));
             added_count += 1;
             j -= 1;
-        } else if i > 0 && (j == 0 || dp[i][j - 1] < dp[i - 1][j]) {
+        } else if i > 0 {
             diff_lines.push(format!("-{}", orig[i - 1]));
             removed_count += 1;
             i -= 1;
