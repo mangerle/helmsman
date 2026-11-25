@@ -5,14 +5,13 @@ use crate::entry_view::{BootEntryItem, flatten_boot_entries_with_options};
 use crate::theme::{FontScale, ThemeMode};
 use grub_boot_reader::{BootEntry, CustomBootEntry, MenuNode, parse_grub_cfg};
 use grub_config_parser::{
-    BootKeyError, CmdlineError, DefaultEntry, GrubConfigFile, KernelCmdline, TimeoutSeconds,
-    TimeoutStyle, default_entry_from_index, default_entry_from_title, get_cmdline_default,
-    get_cmdline_linux, get_default_entry, get_timeout, get_timeout_style, parse_grub_config,
-    set_cmdline_default as cfg_set_cmdline_default, set_cmdline_linux as cfg_set_cmdline_linux,
-    set_default_entry as cfg_set_default_entry, set_timeout as cfg_set_timeout,
-    set_timeout_style as cfg_set_timeout_style,
+    BootKeyError, CmdlineError, DefaultEntry, DiffReport, GrubConfigFile, KernelCmdline,
+    TimeoutSeconds, TimeoutStyle, default_entry_from_index, default_entry_from_title,
+    generate_unified_diff, get_cmdline_default, get_cmdline_linux, get_default_entry, get_timeout,
+    get_timeout_style, parse_grub_config, set_cmdline_default as cfg_set_cmdline_default,
+    set_cmdline_linux as cfg_set_cmdline_linux, set_default_entry as cfg_set_default_entry,
+    set_timeout as cfg_set_timeout, set_timeout_style as cfg_set_timeout_style,
 };
-use grub_transaction_engine::{DiffReport, generate_unified_diff};
 use std::collections::HashMap;
 
 /// 前端主应用状态机

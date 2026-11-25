@@ -16,4 +16,3 @@ workspace = true
 grub-config-parser.workspace = true
 grub-boot-reader.workspace = true
 grub-distro-adapter.workspace = true
-grub-transaction-engine.workspace = true

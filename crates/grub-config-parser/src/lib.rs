@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod boot_defaults;
+pub mod diff;
 pub mod display_config;
 pub mod kernel_cmdline;
 pub mod menu_visibility;
@@ -11,6 +12,7 @@ pub use boot_defaults::{
     default_entry_from_title, get_default_entry, get_timeout, get_timeout_style, set_default_entry,
     set_timeout, set_timeout_style,
 };
+pub use diff::{DiffReport, generate_unified_diff};
 pub use display_config::{
     DisplayConfigError, GfxMode, GrubColor, keys as display_keys, validate_display_path,
 };
