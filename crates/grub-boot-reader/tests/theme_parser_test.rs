@@ -1,4 +1,6 @@
-use grub_boot_reader::{ThemeDimension, parse_grub_theme, scan_available_themes};
+use grub_boot_reader::{
+    ThemeDimension, ThemeValidationError, parse_grub_theme, scan_available_themes,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -118,4 +120,75 @@ fn test_scan_available_themes_sandbox() {
     assert!(!tela.has_desktop_image);
 
     let _ = fs::remove_dir_all(&sandbox);
+}
+
+fn sample_theme_content() -> &'static str {
+    r##"
+# 测试主题
+title-text = "Helmsman 测试"
+desktop-color = "#1e1e2e"
+desktop-image = "background.png"
+
++ boot_menu {
+  left = 20%
+  top = 30%
+  width = 60%
+  item_color = "white"
+  selected_item_color = "black/light-gray"
+}
+
++ progress_bar {
+  id = "__timeout__"
+  left = 30%
+  top = 80%
+  width = 40%
+  height = 20
+}
+"##
+}
+
+#[test]
+fn test_theme_validate_and_preview_summary() {
+    let dir = std::env::temp_dir().join("helmsman_theme_validate");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let theme_txt = dir.join("theme.txt");
+    fs::write(&theme_txt, sample_theme_content()).unwrap();
+    fs::write(dir.join("background.png"), b"fake").unwrap();
+
+    let def = parse_grub_theme(sample_theme_content(), &theme_txt);
+    def.validate().expect("完整主题应通过校验");
+
+    let summary = def.preview_summary();
+    assert_eq!(summary.title_text.as_deref(), Some("Helmsman 测试"));
+    assert!(summary.has_desktop_image);
+    assert!(summary.has_boot_menu);
+    assert!(summary.has_progress_bar);
+    assert_eq!(summary.component_count, 2);
+    assert_eq!(summary.desktop_color.as_deref(), Some("#1e1e2e"));
+}
+
+#[test]
+fn test_theme_validate_missing_resource() {
+    let dir = std::env::temp_dir().join("helmsman_theme_missing");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let theme_txt = dir.join("theme.txt");
+    fs::write(&theme_txt, sample_theme_content()).unwrap();
+
+    let def = parse_grub_theme(sample_theme_content(), &theme_txt);
+    assert!(matches!(
+        def.validate(),
+        Err(ThemeValidationError::ResourceMissing { .. })
+    ));
+}
+
+#[test]
+fn test_theme_validate_empty_definition() {
+    let theme_txt = Path::new("/tmp/empty-theme/theme.txt");
+    let def = parse_grub_theme("# 空主题\n", theme_txt);
+    assert!(matches!(
+        def.validate(),
+        Err(ThemeValidationError::MissingVisual { .. })
+    ));
 }

@@ -2,6 +2,7 @@ mod apply;
 mod apply_support;
 mod error;
 mod ops;
+mod theme_ops;
 
 pub use error::DaemonError;
 
