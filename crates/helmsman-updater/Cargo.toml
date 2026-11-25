@@ -1,0 +1,17 @@
+[package]
+name = "helmsman-updater"
+description = "Helmsman 基于 shipup 的应用自更新与启动崩溃自检封装"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+shipup.workspace = true
+thiserror.workspace = true

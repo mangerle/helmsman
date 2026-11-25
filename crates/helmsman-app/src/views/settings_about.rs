@@ -1,8 +1,8 @@
-use crate::app::HelmsmanWindow;
+use crate::app::{AppUpdateStatus, HelmsmanWindow};
 use crate::views::{kv_row, section_card};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _};
 use gpui_kit::*;
 use helmsman_ui::{FontScale, ThemeMode};
 
@@ -99,6 +99,7 @@ pub fn render_about(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> i
                     cx,
                 )),
         )
+        .child(render_update_section(win, cx))
         .child(
             section_card("当前系统引导适配器探测结果", cx)
                 .child(kv_row(
@@ -136,4 +137,84 @@ pub fn render_about(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> i
                     cx,
                 )),
         )
+}
+
+fn render_update_section(
+    win: &HelmsmanWindow,
+    cx: &mut Context<HelmsmanWindow>,
+) -> impl IntoElement {
+    let status_text = match &win.update_status {
+        AppUpdateStatus::Idle => {
+            format!(
+                "当前版本 v{}，点击右侧按钮检查新版本",
+                env!("CARGO_PKG_VERSION")
+            )
+        }
+        AppUpdateStatus::Checking => "正在向 GitHub Releases 检查签名更新清单...".to_string(),
+        AppUpdateStatus::UpToDate => {
+            format!("当前 v{} 已是最新稳定版本", env!("CARGO_PKG_VERSION"))
+        }
+        AppUpdateStatus::Available(info) => {
+            format!(
+                "发现新版本 v{}，可立即下载并通过 Ed25519 验签安装",
+                info.version()
+            )
+        }
+        AppUpdateStatus::Installing(msg) => msg.clone(),
+        AppUpdateStatus::ReadyToRestart(ver) => {
+            format!("新版本 v{ver} 安装完成，重启应用即可生效")
+        }
+        AppUpdateStatus::Error(err) => err.clone(),
+    };
+
+    let checking = matches!(
+        win.update_status,
+        AppUpdateStatus::Checking | AppUpdateStatus::Installing(_)
+    );
+
+    let mut actions = div().flex().items_center().gap_2().child(
+        Button::new("btn-check-update")
+            .outline()
+            .small()
+            .disabled(checking)
+            .label(if checking {
+                "正在处理..."
+            } else {
+                "检查更新"
+            })
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.check_app_update(cx);
+            })),
+    );
+
+    if let AppUpdateStatus::Available(info) = &win.update_status {
+        let info_clone = (**info).clone();
+        actions = actions.child(
+            Button::new("btn-install-update")
+                .primary()
+                .small()
+                .label(format!("下载并安装 v{}", info.version()))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.install_app_update(info_clone.clone(), cx);
+                })),
+        );
+    } else if let AppUpdateStatus::ReadyToRestart(_) = &win.update_status {
+        actions = actions.child(
+            Button::new("btn-restart-app")
+                .primary()
+                .small()
+                .label("立即重启应用")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.restart_for_update(cx);
+                })),
+        );
+    }
+
+    section_card("应用自更新 (shipup + Ed25519 验签)", cx)
+        .child(
+            Label::new(status_text)
+                .text_xs()
+                .text_color(cx.theme().muted_foreground),
+        )
+        .child(actions)
 }

@@ -11,7 +11,20 @@ use gpui_kit::*;
 use helmsman_ui::{
     AppState, DiffViewModel, MenuPreviewModel, ResolvedTheme, SystemColorScheme, ThemeMode,
 };
+use helmsman_updater::UpdateInfo;
 use tracing::{info, warn};
+
+/// 应用自更新状态（基于 shipup）
+#[derive(Debug, Clone)]
+pub enum AppUpdateStatus {
+    Idle,
+    Checking,
+    UpToDate,
+    Available(Box<UpdateInfo>),
+    Installing(String),
+    ReadyToRestart(String),
+    Error(String),
+}
 
 /// 主导航标签页
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +64,8 @@ pub struct HelmsmanWindow {
     pub theme_url_input: Entity<InputState>,
     /// 是否正在执行主题下载或安装
     pub is_installing_theme: bool,
+    /// 应用自身更新状态
+    pub update_status: AppUpdateStatus,
 }
 
 impl HelmsmanWindow {
@@ -74,6 +89,7 @@ impl HelmsmanWindow {
             toast: None,
             theme_url_input,
             is_installing_theme: false,
+            update_status: AppUpdateStatus::Idle,
         }
     }
 

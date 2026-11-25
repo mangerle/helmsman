@@ -16,6 +16,7 @@ workspace = true
 gpui-kit = "0.11.0"
 helmsman-ui.workspace = true
 helmsman-client.workspace = true
+helmsman-updater.workspace = true
 grub-boot-reader.workspace = true
 grub-config-parser.workspace = true
 tracing.workspace = true
@@ -23,3 +24,19 @@ tracing-subscriber.workspace = true
 tokio.workspace = true
 zbus.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+
+[package.metadata.deb]
+maintainer = "wangle"
+section = "admin"
+priority = "optional"
+depends = "$auto, policykit-1, dbus"
+assets = [
+    ["target/release/helmsman-app", "usr/bin/", "755"],
+    ["../../packaging/linux/helmsman.desktop", "usr/share/applications/helmsman.desktop", "644"],
+    ["../../assets/logo.svg", "usr/share/icons/hicolor/scalable/apps/helmsman.svg", "644"],
+]
+
+[package.metadata.packager]
+name = "Helmsman"
+identifier = "org.freedesktop.Helmsman"
+icons = ["../../assets/logo.svg"]
