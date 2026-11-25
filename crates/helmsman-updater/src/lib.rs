@@ -30,9 +30,8 @@ fn updater_error(context: &str, error: impl std::fmt::Display) -> UpdaterError {
 
 /// Helmsman 官方发布包 Ed25519 签名验证公钥（Base64 编码）
 ///
-/// 发布前请通过 `shipup-cli keygen` 生成 Helmsman 专属密钥对，将私钥存入
-/// GitHub Secret `SHIPUP_PRIVATE_KEY` 并将对应公钥替换至此处。
-pub const UPDATE_PUBLIC_KEY: &str = "REPLACE_WITH_HELMSMAN_ED25519_PUBLIC_KEY==";
+/// 由 `shipup-cli keygen` 生成，对应私钥仅保存在维护者本地与 GitHub Secret `SHIPUP_PRIVATE_KEY`。
+pub const UPDATE_PUBLIC_KEY: &str = "sHcJdYQ1iAoP8L3tdI/aCgq/H/AzApXjBFh4wajJKO8=";
 
 /// Helmsman 官方 GitHub Releases 最新版本清单端点
 pub const DEFAULT_MANIFEST_URL: &str =
