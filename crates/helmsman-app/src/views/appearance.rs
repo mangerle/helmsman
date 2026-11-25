@@ -196,7 +196,39 @@ fn render_resolution_and_colors_section(
                         .enumerate()
                         .map(|(idx, (title, norm, hi))| {
                             let is_active = color_normal == *norm && color_highlight == *hi;
-                            let btn = Button::new(("color-preset", idx)).xsmall().label(*title);
+                            let (norm_fg, norm_bg) = grub_pair_preview_colors(norm);
+                            let (hi_fg, hi_bg) = grub_pair_preview_colors(hi);
+                            let btn = Button::new(("color-preset", idx)).xsmall().child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1p5()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_0p5()
+                                            .child(
+                                                div()
+                                                    .w(px(8.0))
+                                                    .h(px(8.0))
+                                                    .rounded_full()
+                                                    .border_1()
+                                                    .border_color(norm_fg)
+                                                    .bg(norm_bg),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w(px(8.0))
+                                                    .h(px(8.0))
+                                                    .rounded_full()
+                                                    .border_1()
+                                                    .border_color(hi_fg)
+                                                    .bg(hi_bg),
+                                            ),
+                                    )
+                                    .child(Label::new(*title).text_xs()),
+                            );
                             let btn = if is_active {
                                 btn.primary()
                             } else {
@@ -423,4 +455,24 @@ fn render_online_themes_section(
                         )
                 })),
         )
+}
+
+/// 将 GRUB `fg/bg` 颜色对解析为用于按钮小圆点预览的前景/背景色
+fn grub_pair_preview_colors(pair: &str) -> (Rgba, Rgba) {
+    let (fg, bg) = pair.split_once('/').unwrap_or((pair, "black"));
+    (grub_color_to_rgb(fg), grub_color_to_rgb(bg))
+}
+
+fn grub_color_to_rgb(name: &str) -> Rgba {
+    match name.trim() {
+        "white" => rgb(0xffffff),
+        "light-gray" => rgb(0xcbd5e1),
+        "black" => rgb(0x18181b),
+        "green" => rgb(0x16a34a),
+        "light-green" => rgb(0x4ade80),
+        "cyan" => rgb(0x06b6d4),
+        "light-cyan" => rgb(0x67e8f9),
+        "blue" => rgb(0x1d4ed8),
+        _ => rgb(0x94a3b8),
+    }
 }

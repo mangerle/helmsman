@@ -1,8 +1,9 @@
 use crate::app::{ActiveModal, HelmsmanWindow};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _};
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, StyledExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use helmsman_ui::{
@@ -117,13 +118,14 @@ fn render_apply_diff_modal(
                 .flex_col()
                 .flex_1()
                 .min_h(px(160.0))
+                .max_h(px(300.0))
                 .p_3()
                 .rounded_md()
                 .border_1()
                 .border_color(cx.theme().border)
                 .bg(cx.theme().secondary.opacity(0.3))
                 .gap_0p5()
-                .overflow_hidden()
+                .overflow_y_scrollbar()
                 .when(parsed_diff.lines.is_empty(), |el| {
                     el.child(
                         Label::new(if win.state.has_custom_entry_changes() {
@@ -135,7 +137,7 @@ fn render_apply_diff_modal(
                         .text_color(cx.theme().muted_foreground),
                     )
                 })
-                .children(parsed_diff.lines.iter().take(24).map(|line| {
+                .children(parsed_diff.lines.iter().take(200).map(|line| {
                     let prefix = match line.line_type {
                         DiffLineType::Added => "+ ",
                         DiffLineType::Removed => "- ",
@@ -264,16 +266,59 @@ fn render_menu_preview_modal(
                 })),
         )
         .child(
-            div().flex().justify_end().child(
-                Button::new("btn-close-preview")
-                    .secondary()
-                    .small()
-                    .label("关闭预览")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.active_modal = ActiveModal::None;
-                        this.preview_state = None;
-                        cx.notify();
-                    })),
-            ),
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1p5()
+                        .child(
+                            Button::new("btn-preview-prev")
+                                .outline()
+                                .small()
+                                .icon(IconName::ArrowUp)
+                                .label("上一项")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(p) = this.preview_state.as_mut()
+                                        && !p.entries.is_empty()
+                                    {
+                                        p.selected_index = p.selected_index.saturating_sub(1);
+                                        p.is_countdown_active = false;
+                                    }
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("btn-preview-next")
+                                .outline()
+                                .small()
+                                .icon(IconName::ArrowDown)
+                                .label("下一项")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(p) = this.preview_state.as_mut()
+                                        && !p.entries.is_empty()
+                                    {
+                                        let max_idx = p.entries.len().saturating_sub(1);
+                                        p.selected_index = (p.selected_index + 1).min(max_idx);
+                                        p.is_countdown_active = false;
+                                    }
+                                    cx.notify();
+                                })),
+                        ),
+                )
+                .child(
+                    Button::new("btn-close-preview")
+                        .secondary()
+                        .small()
+                        .label("关闭预览")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.active_modal = ActiveModal::None;
+                            this.preview_state = None;
+                            cx.notify();
+                        })),
+                ),
         )
 }

@@ -243,6 +243,14 @@ pub fn remove_theme(theme_name: &str) -> Result<(), String> {
         .map_err(|e| format!("卸载主题失败: {e}"))
 }
 
+/// 持久化引导项友好别名（空字符串表示清除别名）
+pub fn set_entry_alias(entry_id: &str, alias: &str) -> Result<(), String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .set_entry_alias(entry_id, alias)
+        .map_err(|e| format!("设置引导项别名失败: {e}"))
+}
+
 /// 临时下载文件 RAII 守卫，确保退出作用域时自动删除临时压缩包
 struct TempFileGuard(PathBuf);
 

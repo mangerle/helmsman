@@ -11,7 +11,8 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use helmsman_ui::{
-    AppState, DiffViewModel, MenuPreviewModel, ResolvedTheme, SystemColorScheme, ThemeMode,
+    AppState, DiffViewModel, FontScale, MenuPreviewModel, ResolvedTheme, SystemColorScheme,
+    ThemeMode,
 };
 use helmsman_updater::UpdateInfo;
 use tracing::{info, warn};
@@ -64,6 +65,10 @@ pub struct HelmsmanWindow {
     pub toast: Option<(bool, String)>,
     /// 自定义在线主题 HTTPS URL 输入框状态
     pub theme_url_input: Entity<InputState>,
+    /// 启动项搜索过滤输入框状态
+    pub entry_search_input: Entity<InputState>,
+    /// 选中启动项自定义别名输入框状态
+    pub alias_input: Entity<InputState>,
     /// 是否正在执行主题下载或安装
     pub is_installing_theme: bool,
     /// 应用自身更新状态
@@ -80,6 +85,32 @@ impl HelmsmanWindow {
             InputState::new(window, cx)
                 .placeholder("输入主题归档 HTTPS URL (.zip / .tar.gz / .tar)")
         });
+        let entry_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("搜索引导项标题、路径或 ID..."));
+        let initial_alias = state
+            .get_selected_entry()
+            .and_then(|e| {
+                e.id.as_deref()
+                    .and_then(|id| state.get_entry_alias(id))
+                    .or_else(|| state.get_entry_alias(&e.title))
+            })
+            .unwrap_or("")
+            .to_string();
+        let alias_input = cx.new(|cx| {
+            let mut input =
+                InputState::new(window, cx).placeholder("输入友好显示别名（留空则清除）");
+            if !initial_alias.is_empty() {
+                input.set_value(initial_alias, window, cx);
+            }
+            input
+        });
+
+        // 监听系统浅色/深色外观变化，保证“跟随系统”模式实时响应桌面环境切换
+        cx.observe_window_appearance(window, |this, window, cx| {
+            this.sync_kit_theme(window, cx);
+            cx.notify();
+        })
+        .detach();
 
         Self {
             state,
@@ -90,28 +121,101 @@ impl HelmsmanWindow {
             preview_state: None,
             toast: None,
             theme_url_input,
+            entry_search_input,
+            alias_input,
             is_installing_theme: false,
             update_status: AppUpdateStatus::Idle,
         }
     }
 
-    /// 同步 `helmsman_ui::ThemeMode` 到 `gpui-component` 全局主题
+    /// 同步 `helmsman_ui::ThemeMode` 与无障碍字体缩放到 `gpui-component` 全局主题
     pub fn sync_kit_theme(&self, window: &mut Window, cx: &mut App) {
-        let resolved = self
-            .state
-            .get_theme_mode()
-            .resolve(SystemColorScheme::PreferDark);
+        let system_scheme = match window.appearance() {
+            WindowAppearance::Light | WindowAppearance::VibrantLight => {
+                SystemColorScheme::PreferLight
+            }
+            WindowAppearance::Dark | WindowAppearance::VibrantDark => SystemColorScheme::PreferDark,
+        };
+        let resolved = self.state.get_theme_mode().resolve(system_scheme);
         let kit_mode = match resolved {
             ResolvedTheme::Light => KitThemeMode::Light,
             ResolvedTheme::Dark | ResolvedTheme::HighContrast => KitThemeMode::Dark,
         };
         Theme::change(kit_mode, Some(window), cx);
+
+        let factor = self.state.get_font_scale().factor();
+        let theme = Theme::global_mut(cx);
+        theme.font_size = px(16.0 * factor);
+        theme.mono_font_size = px(13.0 * factor);
     }
 
     /// 切换界面主题模式
     pub fn set_ui_theme(&mut self, mode: ThemeMode, window: &mut Window, cx: &mut Context<Self>) {
         self.state.set_theme_mode(mode);
         self.sync_kit_theme(window, cx);
+        cx.notify();
+    }
+
+    /// 切换界面字体缩放比例并立即刷新主题字号
+    pub fn set_font_scale(
+        &mut self,
+        scale: FontScale,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.set_font_scale(scale);
+        self.sync_kit_theme(window, cx);
+        cx.notify();
+    }
+
+    /// 选中启动条目并同步刷新别名输入框内容
+    pub fn select_boot_entry(
+        &mut self,
+        full_path: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.select_entry(full_path);
+        let alias = self
+            .state
+            .get_selected_entry()
+            .and_then(|e| {
+                e.id.as_deref()
+                    .and_then(|id| self.state.get_entry_alias(id))
+                    .or_else(|| self.state.get_entry_alias(&e.title))
+            })
+            .unwrap_or("")
+            .to_string();
+        self.alias_input.update(cx, |input, cx| {
+            input.set_value(alias, window, cx);
+        });
+        cx.notify();
+    }
+
+    /// 保存当前选中启动项的自定义友好别名
+    pub fn save_selected_entry_alias(&mut self, cx: &mut Context<Self>) {
+        let Some(entry) = self.state.get_selected_entry().cloned() else {
+            return;
+        };
+        let key = entry.id.unwrap_or_else(|| entry.title.clone());
+        let alias = self.alias_input.read(cx).value().trim().to_string();
+
+        if !self.backend.is_demo_mode
+            && let Err(e) = backend::set_entry_alias(&key, &alias)
+        {
+            warn!("保存引导项别名失败: {e}");
+            self.toast = Some((false, e));
+            cx.notify();
+            return;
+        }
+
+        self.state.set_entry_alias(&key, &alias);
+        let msg = if alias.is_empty() {
+            format!("已清除条目 '{key}' 的自定义别名")
+        } else {
+            format!("已将条目别名更新为 '{alias}'")
+        };
+        self.toast = Some((true, msg));
         cx.notify();
     }
 
@@ -363,6 +467,7 @@ impl Render for HelmsmanWindow {
             .flex()
             .flex_col()
             .size_full()
+            .text_size(cx.theme().font_size)
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .child(self.render_topbar(cx))

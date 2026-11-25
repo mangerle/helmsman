@@ -1,6 +1,7 @@
 use crate::app::HelmsmanWindow;
 use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::label::Label;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::switch::Switch;
@@ -39,6 +40,27 @@ fn render_entry_list_pane(
     selected_path: Option<&str>,
     cx: &mut Context<HelmsmanWindow>,
 ) -> impl IntoElement {
+    let query = win
+        .entry_search_input
+        .read(cx)
+        .value()
+        .trim()
+        .to_lowercase();
+    let filtered_items: Vec<&BootEntryItem> = items
+        .iter()
+        .filter(|item| {
+            if query.is_empty() {
+                return true;
+            }
+            item.display_title.to_lowercase().contains(&query)
+                || item.full_path.to_lowercase().contains(&query)
+                || item
+                    .id
+                    .as_deref()
+                    .is_some_and(|id| id.to_lowercase().contains(&query))
+        })
+        .collect();
+
     div()
         .flex()
         .flex_col()
@@ -50,8 +72,8 @@ fn render_entry_list_pane(
         .child(
             div()
                 .flex()
-                .items_center()
-                .justify_between()
+                .flex_col()
+                .gap_2p5()
                 .px_4()
                 .py_3()
                 .border_b_1()
@@ -60,38 +82,47 @@ fn render_entry_list_pane(
                     div()
                         .flex()
                         .items_center()
-                        .gap_2()
-                        .child(Label::new("引导菜单").text_sm().font_semibold())
+                        .justify_between()
                         .child(
-                            Tag::new()
-                                .with_variant(TagVariant::Secondary)
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(Label::new("引导菜单").text_sm().font_semibold())
+                                .child(
+                                    Tag::new()
+                                        .with_variant(TagVariant::Secondary)
+                                        .xsmall()
+                                        .child(format!("{}", filtered_items.len())),
+                                ),
+                        )
+                        .child(
+                            Button::new("btn-add-sample-custom")
+                                .outline()
                                 .xsmall()
-                                .child(format!("{}", items.len())),
+                                .icon(IconName::Plus)
+                                .label("添加 ISO")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    let idx = this.state.draft_custom_entries.len() + 1;
+                                    let entry = CustomBootEntry::new_iso_boot(
+                                        format!("custom_iso_{idx}"),
+                                        format!("自定义 Live ISO #{idx}"),
+                                        "/boot/iso/live.iso",
+                                        "0000-0000",
+                                        "",
+                                    );
+                                    this.state.add_custom_entry(entry);
+                                    this.toast = Some((
+                                        true,
+                                        format!(
+                                            "已添加自定义 ISO 草稿条目 #{idx}（审核保存后生效）"
+                                        ),
+                                    ));
+                                    cx.notify();
+                                })),
                         ),
                 )
-                .child(
-                    Button::new("btn-add-sample-custom")
-                        .outline()
-                        .xsmall()
-                        .icon(IconName::Plus)
-                        .label("添加 ISO")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let idx = this.state.draft_custom_entries.len() + 1;
-                            let entry = CustomBootEntry::new_iso_boot(
-                                format!("custom_iso_{idx}"),
-                                format!("自定义 Live ISO #{idx}"),
-                                "/boot/iso/live.iso",
-                                "0000-0000",
-                                "",
-                            );
-                            this.state.add_custom_entry(entry);
-                            this.toast = Some((
-                                true,
-                                format!("已添加自定义 ISO 草稿条目 #{idx}（审核保存后生效）"),
-                            ));
-                            cx.notify();
-                        })),
-                ),
+                .child(Input::new(&win.entry_search_input).small()),
         )
         .child(
             div()
@@ -101,7 +132,16 @@ fn render_entry_list_pane(
                 .p_3()
                 .gap_2()
                 .overflow_y_scrollbar()
-                .children(items.iter().enumerate().map(|(idx, item)| {
+                .when(filtered_items.is_empty(), |el| {
+                    el.child(
+                        div().p_4().child(
+                            Label::new("未找到匹配的引导条目")
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground),
+                        ),
+                    )
+                })
+                .children(filtered_items.into_iter().enumerate().map(|(idx, item)| {
                     let is_selected = selected_path == Some(item.full_path.as_str());
                     let full_path = item.full_path.clone();
                     let entry_id = item.id.clone();
@@ -134,9 +174,8 @@ fn render_entry_list_pane(
                             })
                         })
                         .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.state.select_entry(&full_path);
-                            cx.notify();
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.select_boot_entry(&full_path, window, cx);
                         }))
                         .child(
                             div()
@@ -287,6 +326,26 @@ fn render_inspector_pane(
                     .child(kv_row(
                         "根分区 UUID",
                         entry.root_uuid.as_deref().unwrap_or("未知"),
+                        cx,
+                    ))
+                    .child(setting_row(
+                        "友好显示别名",
+                        "仅作用于 Helmsman 列表显示，不改动系统内核配置",
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1p5()
+                            .w(px(280.0))
+                            .child(div().flex_1().child(Input::new(&win.alias_input).small()))
+                            .child(
+                                Button::new("btn-save-alias")
+                                    .outline()
+                                    .xsmall()
+                                    .label("保存")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.save_selected_entry_alias(cx);
+                                    })),
+                            ),
                         cx,
                     ))
                     .child(

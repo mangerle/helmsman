@@ -52,8 +52,9 @@ pub fn render_settings(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -
                     div().flex().gap_1p5().children(
                         [
                             (FontScale::Standard, "标准 1.0x"),
-                            (FontScale::Large, "大号 1.2x"),
-                            (FontScale::ExtraLarge, "特大 1.4x"),
+                            (FontScale::Medium, "中等 1.25x"),
+                            (FontScale::Large, "大号 1.5x"),
+                            (FontScale::ExtraLarge, "特大 2.0x"),
                         ]
                         .into_iter()
                         .enumerate()
@@ -64,9 +65,8 @@ pub fn render_settings(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -
                             } else {
                                 btn.outline()
                             };
-                            btn.on_click(cx.listener(move |this, _, _, cx| {
-                                this.state.set_font_scale(scale);
-                                cx.notify();
+                            btn.on_click(cx.listener(move |this, _, window, cx| {
+                                this.set_font_scale(scale, window, cx);
                             }))
                         }),
                     ),
