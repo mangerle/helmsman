@@ -1,0 +1,24 @@
+[package]
+name = "helmsman-app"
+description = "Helmsman 基于 gpui-kit 的原生 Linux 桌面图形界面"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gpui-kit = "0.11.0"
+helmsman-ui.workspace = true
+helmsman-client.workspace = true
+grub-boot-reader.workspace = true
+grub-config-parser.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+zbus.workspace = true

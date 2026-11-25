@@ -8,6 +8,7 @@ members = [
     "crates/helmsman-client",
     "crates/helmsman-daemon",
     "crates/helmsman-ui",
+    "crates/helmsman-app",
 ]
 
 [workspace.package]
