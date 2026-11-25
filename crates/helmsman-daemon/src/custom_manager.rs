@@ -153,7 +153,16 @@ impl CustomManager {
             {
                 use std::os::unix::fs::PermissionsExt;
                 let permissions = fs::Permissions::from_mode(0o755);
-                let _ = fs::set_permissions(&self.custom_script_path, permissions);
+                if let Err(e) = fs::set_permissions(&self.custom_script_path, permissions) {
+                    rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
+                    return Err(DaemonError::AtomicWriteFailed {
+                        reason: format!(
+                            "设置自定义脚本可执行权限失败 '{}': {}",
+                            self.custom_script_path.display(),
+                            e
+                        ),
+                    });
+                }
             }
 
             info!(
@@ -171,32 +180,27 @@ impl CustomManager {
                 });
             }
 
+            // 读取当前 /etc/default/grub，禁止吞错传空串以免覆盖系统配置
+            let default_cfg_content = match fs::read_to_string(&service.default_config_path) {
+                Ok(content) => content,
+                Err(e) => {
+                    rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
+                    return Err(DaemonError::ConfigReadFailed {
+                        path: service.default_config_path.clone(),
+                        reason: e.to_string(),
+                    });
+                }
+            };
+
             // 若不需要跳过则触发引导更新（沿用调用方 UID 以保持审计一致）
-            let update_res = service.apply_changes_as(
-                &fs::read_to_string(&service.default_config_path).unwrap_or_default(),
-                reason,
-                options,
-                caller_uid,
-            );
+            let update_res =
+                service.apply_changes_as(&default_cfg_content, reason, options, caller_uid);
 
             // 引导更新失败时回滚自定义脚本，避免磁盘脚本与生成的 grub.cfg 不一致
             match update_res {
                 Ok(result) => Ok(result),
                 Err(err) => {
-                    if let Some(ref snap) = script_snapshot
-                        && let Err(restore_err) = restore_snapshot(snap)
-                    {
-                        tracing::error!(
-                            "自定义脚本回滚失败，路径: {}，原因: {}",
-                            self.custom_script_path.display(),
-                            restore_err
-                        );
-                    } else {
-                        tracing::warn!(
-                            "引导更新失败，自定义脚本已回滚至写入前状态，路径: {}",
-                            self.custom_script_path.display()
-                        );
-                    }
+                    rollback_custom_script(&self.custom_script_path, script_snapshot.as_ref());
                     Err(err)
                 }
             }
@@ -248,21 +252,33 @@ impl CustomManager {
         self.save_custom_entries(service, &entries, reason, options)
     }
 
+    /// 尝试读取条目别名映射表，区分不存在与读取/解析失败
+    fn try_load_aliases(&self) -> Result<HashMap<String, String>, DaemonError> {
+        if !self.aliases_path.exists() {
+            return Ok(HashMap::new());
+        }
+
+        let content =
+            fs::read_to_string(&self.aliases_path).map_err(|e| DaemonError::ConfigReadFailed {
+                path: self.aliases_path.clone(),
+                reason: e.to_string(),
+            })?;
+
+        serde_json::from_str(&content).map_err(|e| DaemonError::ConfigReadFailed {
+            path: self.aliases_path.clone(),
+            reason: format!("解析别名注册表 JSON 失败: {}", e),
+        })
+    }
+
     /// 读取条目别名映射表
     ///
     /// # 语义说明
     /// 别名是**界面显示名**，不会写入 `grub.cfg`，也不改变开机菜单 `menuentry` 标题。
     pub fn load_aliases(&self) -> HashMap<String, String> {
-        if !self.aliases_path.exists() {
-            return HashMap::new();
-        }
-
-        let content = match fs::read_to_string(&self.aliases_path) {
-            Ok(c) => c,
-            Err(_) => return HashMap::new(),
-        };
-
-        serde_json::from_str(&content).unwrap_or_default()
+        self.try_load_aliases().unwrap_or_else(|e| {
+            tracing::warn!("读取别名注册表失败，已回退为空映射: {}", e);
+            HashMap::new()
+        })
     }
 
     /// 保存条目别名映射
@@ -273,11 +289,11 @@ impl CustomManager {
     /// - 传入空别名表示清除映射、回退原始标题。
     ///
     /// # Errors
-    /// 当条目 ID 或显示名含非法字符、超长时返回 [`DaemonError::InvalidAlias`]。
+    /// 当条目 ID 或显示名含非法字符、超长，或已有别名表损坏不可读时返回对应 [`DaemonError`]。
     pub fn set_alias(&self, entry_id: &str, alias: &str) -> Result<(), DaemonError> {
         validate_alias_binding(entry_id, alias)?;
 
-        let mut aliases = self.load_aliases();
+        let mut aliases = self.try_load_aliases()?;
         let trimmed_alias = alias.trim();
 
         if trimmed_alias.is_empty() {
@@ -287,7 +303,9 @@ impl CustomManager {
         }
 
         if let Some(parent) = self.aliases_path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent).map_err(|e| DaemonError::AtomicWriteFailed {
+                reason: format!("创建别名目录 '{}' 失败: {}", parent.display(), e),
+            })?;
         }
 
         let json_str =
@@ -316,6 +334,27 @@ impl CustomManager {
             diff_summary: None,
         });
         Ok(())
+    }
+}
+
+/// 失败时将受管自定义脚本回滚至快照状态
+fn rollback_custom_script(
+    script_path: &std::path::Path,
+    snapshot: Option<&grub_transaction_engine::SnapshotMeta>,
+) {
+    if let Some(snap) = snapshot {
+        if let Err(restore_err) = restore_snapshot(snap) {
+            tracing::error!(
+                "自定义脚本回滚失败，路径: {}，原因: {}",
+                script_path.display(),
+                restore_err
+            );
+        } else {
+            tracing::warn!(
+                "后续步骤失败，自定义脚本已回滚至写入前状态，路径: {}",
+                script_path.display()
+            );
+        }
     }
 }
 
