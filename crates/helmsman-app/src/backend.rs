@@ -4,7 +4,54 @@ use helmsman_client::{
     ThemeInfoDto,
 };
 use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::sync::LazyLock;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
+
+/// 在线下载主题压缩包最大字节数限制 (64 MiB，与服务端限制一致)
+const MAX_DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024;
+
+/// 全局复用的阻塞式 HTTP 客户端单例（复用连接池与 TLS 上下文）
+static HTTP_CLIENT: LazyLock<Result<reqwest::blocking::Client, String>> = LazyLock::new(|| {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .user_agent(concat!("Helmsman/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| format!("初始化 HTTP 客户端失败: {e}"))
+});
+
+/// 在线精选 GRUB 主题条目描述
+#[derive(Debug, Clone, Copy)]
+pub struct FeaturedOnlineTheme {
+    /// 主题名称
+    pub name: &'static str,
+    /// 简短说明
+    pub description: &'static str,
+    /// 直链归档地址 (HTTPS)
+    pub url: &'static str,
+}
+
+/// 内置精选开源 GRUB 主题列表
+pub const FEATURED_THEMES: &[FeaturedOnlineTheme] = &[
+    FeaturedOnlineTheme {
+        name: "catppuccin-mocha",
+        description: "Catppuccin Mocha 现代柔和深色主题 (GitHub 官方归档)",
+        url: "https://github.com/catppuccin/grub/archive/refs/heads/main.zip",
+    },
+    FeaturedOnlineTheme {
+        name: "fallout-grub-theme",
+        description: "Fallout 复古终端风格 GRUB 主题 (GitHub 归档)",
+        url: "https://github.com/shvchk/fallout-grub-theme/archive/refs/heads/master.zip",
+    },
+    FeaturedOnlineTheme {
+        name: "poly-dark",
+        description: "Poly Dark 极简高对比度深色主题 (GitHub 归档)",
+        url: "https://github.com/shvchk/poly-dark/archive/refs/heads/master.zip",
+    },
+];
 
 /// 从特权守护进程拉取的全量初始快照（无法连接总线时提供安全演示模式）
 #[derive(Debug, Clone)]
@@ -170,4 +217,117 @@ pub fn delete_snapshot(snapshot_id: &str) -> Result<(), String> {
     proxy
         .delete_snapshot(snapshot_id)
         .map_err(|e| format!("删除快照失败: {e}"))
+}
+
+/// 刷新已安装主题列表
+pub fn list_installed_themes() -> Result<Vec<ThemeInfoDto>, String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .list_themes()
+        .map_err(|e| format!("获取已安装主题列表失败: {e}"))
+}
+
+/// 从本地压缩包路径安装 GRUB 主题
+pub fn install_theme_archive(archive_path: &str, theme_name: &str) -> Result<String, String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .install_theme_archive(archive_path, theme_name)
+        .map_err(|e| format!("安装主题失败: {e}"))
+}
+
+/// 卸载指定名称的已安装 GRUB 主题
+pub fn remove_theme(theme_name: &str) -> Result<(), String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .remove_theme(theme_name)
+        .map_err(|e| format!("卸载主题失败: {e}"))
+}
+
+/// 临时下载文件 RAII 守卫，确保退出作用域时自动删除临时压缩包
+struct TempFileGuard(PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+/// 流式下载在线主题归档（仅限 HTTPS 且受 64 MiB 体积上限约束）并安装至系统目录
+pub fn download_and_install_theme(url: &str, theme_name: &str) -> Result<String, String> {
+    let trimmed_url = url.trim();
+    if !trimmed_url.starts_with("https://") {
+        return Err("安全拦截：在线主题仅支持 https:// 加密下载链接".to_string());
+    }
+
+    let client = HTTP_CLIENT
+        .as_ref()
+        .map_err(|e| format!("网络客户端不可用: {e}"))?;
+
+    info!("开始流式下载在线 GRUB 主题: {}", trimmed_url);
+    let mut response = client
+        .get(trimmed_url)
+        .send()
+        .map_err(|e| format!("请求主题压缩包失败: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "下载主题失败，HTTP 状态码: {}",
+            response.status().as_u16()
+        ));
+    }
+
+    if let Some(len) = response.content_length()
+        && len > MAX_DOWNLOAD_BYTES
+    {
+        return Err(format!(
+            "远端主题压缩包过大 ({len} 字节)，超过 64 MiB 安全上限"
+        ));
+    }
+
+    let ext = if trimmed_url.ends_with(".tar.gz") || trimmed_url.ends_with(".tgz") {
+        "tar.gz"
+    } else if trimmed_url.ends_with(".tar") {
+        "tar"
+    } else {
+        "zip"
+    };
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_path = std::env::temp_dir().join(format!(
+        "helmsman_theme_dl_{}_{}.{}",
+        std::process::id(),
+        ts,
+        ext
+    ));
+    let _guard = TempFileGuard(temp_path.clone());
+
+    let mut out = File::create(&temp_path).map_err(|e| format!("创建临时下载文件失败: {e}"))?;
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total_bytes: u64 = 0;
+
+    loop {
+        let n = response
+            .read(&mut buffer)
+            .map_err(|e| format!("读取下载数据流失败: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        total_bytes = total_bytes.saturating_add(n as u64);
+        if total_bytes > MAX_DOWNLOAD_BYTES {
+            return Err("下载数据流超出 64 MiB 安全上限，已中止".to_string());
+        }
+        out.write_all(&buffer[..n])
+            .map_err(|e| format!("写入临时主题文件失败: {e}"))?;
+    }
+    out.flush()
+        .map_err(|e| format!("刷新临时主题文件缓冲区失败: {e}"))?;
+    drop(out);
+
+    info!(
+        "主题压缩包下载完成 ({} 字节)，正在交由特权服务安装...",
+        total_bytes
+    );
+    install_theme_archive(&temp_path.to_string_lossy(), theme_name)
 }

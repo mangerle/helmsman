@@ -1,5 +1,6 @@
 mod app;
 mod backend;
+mod theme_actions;
 mod views;
 
 use app::HelmsmanWindow;
@@ -31,9 +32,11 @@ fn main() {
         };
 
         if let Err(err) = gpui_kit::open_window(window_options, cx, move |window, cx| {
-            let view = HelmsmanWindow::new(snapshot);
-            view.sync_kit_theme(window, cx);
-            cx.new(|_| view)
+            cx.new(|cx| {
+                let view = HelmsmanWindow::new(snapshot, window, cx);
+                view.sync_kit_theme(window, cx);
+                view
+            })
         }) {
             error!("创建 Helmsman 桌面主窗口失败: {err}");
         }

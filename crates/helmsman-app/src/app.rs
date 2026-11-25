@@ -1,6 +1,7 @@
 use crate::backend::{self, BackendSnapshot};
 use crate::views;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::InputState;
 use gpui_kit::component::label::Label;
 use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::theme::{Theme, ThemeMode as KitThemeMode};
@@ -46,14 +47,22 @@ pub struct HelmsmanWindow {
     pub preview_state: Option<MenuPreviewModel>,
     /// 底部/顶部临时反馈提示 (是否成功, 文本)
     pub toast: Option<(bool, String)>,
+    /// 自定义在线主题 HTTPS URL 输入框状态
+    pub theme_url_input: Entity<InputState>,
+    /// 是否正在执行主题下载或安装
+    pub is_installing_theme: bool,
 }
 
 impl HelmsmanWindow {
     /// 从后端快照构建窗口状态
-    pub fn new(backend: BackendSnapshot) -> Self {
+    pub fn new(backend: BackendSnapshot, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::new_from_content(&backend.default_config, &backend.grub_cfg)
             .with_custom_entries(backend.custom_entries.clone())
             .with_aliases(backend.aliases.clone());
+        let theme_url_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("输入主题归档 HTTPS URL (.zip / .tar.gz / .tar)")
+        });
 
         Self {
             state,
@@ -63,6 +72,8 @@ impl HelmsmanWindow {
             active_modal: ActiveModal::None,
             preview_state: None,
             toast: None,
+            theme_url_input,
+            is_installing_theme: false,
         }
     }
 

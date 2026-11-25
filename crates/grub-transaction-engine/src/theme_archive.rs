@@ -308,58 +308,34 @@ fn extract_tar<R: Read>(
     Ok(())
 }
 
-/// 在解压目录中智能定位包含 `theme.txt` 的实际主题根目录
+/// 在解压目录中智能定位包含 `theme.txt` 的实际主题根目录（广度优先探测，深度 ≤ 3）
 ///
 /// # 适用场景
-/// 许多第三方 GRUB 主题压缩包在打包时带有外层根目录（如 `vimix-theme-master/theme.txt`），
-/// 本函数可自适应向下探测（深度 ≤ 2），自动剔除冗余外层目录包装。
+/// 许多第三方 GRUB 主题压缩包在打包时带有多层外层目录（如 `repo-main/src/theme-name/theme.txt`），
+/// 本函数可自适应向下探测，自动剔除冗余外层目录包装。
 pub fn find_theme_root_in_dir(dir: &Path) -> Result<PathBuf, ThemeSecurityError> {
-    // 1. 检查根目录下是否直接存在 theme.txt
-    if dir.join("theme.txt").is_file() {
-        return Ok(dir.to_path_buf());
-    }
-
-    // 2. 探寻深度为 1 的直接子目录
-    let mut candidates = Vec::new();
-    if let Ok(read_dir) = fs::read_dir(dir) {
-        for entry in read_dir.flatten() {
-            if let Ok(ft) = entry.file_type()
-                && ft.is_dir()
-            {
-                let sub_dir = entry.path();
-                if sub_dir.join("theme.txt").is_file() {
-                    candidates.push(sub_dir);
-                }
-            }
+    let mut queue = std::collections::VecDeque::from([(dir.to_path_buf(), 0usize)]);
+    while let Some((current, depth)) = queue.pop_front() {
+        if current.join("theme.txt").is_file() {
+            return Ok(current);
         }
-    }
-
-    if candidates.len() == 1 {
-        return Ok(candidates.remove(0));
-    } else if candidates.len() > 1 {
-        // 多个子目录均包含 theme.txt，默认返回第一个
-        return Ok(candidates.remove(0));
-    }
-
-    // 3. 探寻深度为 2 的二级子目录（例如 repo-master/themes/theme.txt）
-    if let Ok(read_dir) = fs::read_dir(dir) {
-        for entry in read_dir.flatten() {
-            if let Ok(ft) = entry.file_type()
-                && ft.is_dir()
-            {
-                let sub_dir = entry.path();
-                if let Ok(sub_read) = fs::read_dir(&sub_dir) {
-                    for sub_entry in sub_read.flatten() {
-                        if let Ok(sub_ft) = sub_entry.file_type()
-                            && sub_ft.is_dir()
-                        {
-                            let sub_sub_dir = sub_entry.path();
-                            if sub_sub_dir.join("theme.txt").is_file() {
-                                return Ok(sub_sub_dir);
-                            }
-                        }
-                    }
-                }
+        if depth >= 3 {
+            continue;
+        }
+        if let Ok(read_dir) = fs::read_dir(&current) {
+            let mut subdirs: Vec<PathBuf> = read_dir
+                .flatten()
+                .filter_map(|entry| {
+                    entry
+                        .file_type()
+                        .ok()
+                        .filter(|ft| ft.is_dir())
+                        .map(|_| entry.path())
+                })
+                .collect();
+            subdirs.sort();
+            for sub in subdirs {
+                queue.push_back((sub, depth + 1));
             }
         }
     }
