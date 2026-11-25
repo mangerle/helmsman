@@ -278,6 +278,7 @@ fn render_inspector_pane(
     cx: &mut Context<HelmsmanWindow>,
 ) -> impl IntoElement {
     let selected = win.state.get_selected_entry().cloned();
+    let has_saved_default = win.state.is_saved_default_enabled();
     let cmdline_default = win.state.get_cmdline_default();
     let has_quiet = cmdline_default.split_whitespace().any(|t| t == "quiet");
     let has_splash = cmdline_default.split_whitespace().any(|t| t == "splash");
@@ -386,20 +387,18 @@ fn render_inspector_pane(
             section_card("全局内核启动参数 (GRUB_CMDLINE_LINUX_DEFAULT)", cx)
                 .child(
                     div()
-                        .px_3()
-                        .py_2()
-                        .rounded_lg()
-                        .bg(cx.theme().background.opacity(0.75))
-                        .border_1()
-                        .border_color(cx.theme().border.opacity(0.5))
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(div().flex_1().child(Input::new(&win.cmdline_input).small()))
                         .child(
-                            Label::new(if cmdline_default.is_empty() {
-                                "（当前参数为空）"
-                            } else {
-                                cmdline_default
-                            })
-                            .text_xs()
-                            .text_color(cx.theme().foreground),
+                            Button::new("btn-apply-cmdline")
+                                .outline()
+                                .small()
+                                .label("应用参数")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.apply_cmdline_input(cx);
+                                })),
                         ),
                 )
                 .child(setting_row(
@@ -407,11 +406,8 @@ fn render_inspector_pane(
                     "隐藏启动过程中的大部分内核日志输出",
                     Switch::new("sw-quiet")
                         .checked(has_quiet)
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            let _ = this
-                                .state
-                                .set_cmdline_default_flag(well_known_flags::QUIET, *checked);
-                            cx.notify();
+                        .on_click(cx.listener(|this, checked, window, cx| {
+                            this.toggle_cmdline_flag(well_known_flags::QUIET, *checked, window, cx);
                         })),
                     cx,
                 ))
@@ -420,11 +416,13 @@ fn render_inspector_pane(
                     "配合 Plymouth 展示发行版图形启动动画",
                     Switch::new("sw-splash")
                         .checked(has_splash)
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            let _ = this
-                                .state
-                                .set_cmdline_default_flag(well_known_flags::SPLASH, *checked);
-                            cx.notify();
+                        .on_click(cx.listener(|this, checked, window, cx| {
+                            this.toggle_cmdline_flag(
+                                well_known_flags::SPLASH,
+                                *checked,
+                                window,
+                                cx,
+                            );
                         })),
                     cx,
                 ))
@@ -433,17 +431,38 @@ fn render_inspector_pane(
                     "遇到显卡黑屏或驱动兼容性故障时开启排障",
                     Switch::new("sw-nomodeset")
                         .checked(has_nomodeset)
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            let _ = this
-                                .state
-                                .set_cmdline_default_flag(well_known_flags::NOMODESET, *checked);
-                            cx.notify();
+                        .on_click(cx.listener(|this, checked, window, cx| {
+                            this.toggle_cmdline_flag(
+                                well_known_flags::NOMODESET,
+                                *checked,
+                                window,
+                                cx,
+                            );
                         })),
                     cx,
                 )),
         )
         .child(
-            section_card("菜单类级可见性策略（零侵入官方开关）", cx)
+            section_card("默认启动模式与菜单可见性策略", cx)
+                .child(setting_row(
+                    "记忆上次启动项 (GRUB_DEFAULT=saved)",
+                    "开启后自动选中上一次开机所选条目；关闭则使用预定义默认项",
+                    Switch::new("sw-saved-default")
+                        .checked(has_saved_default)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            if *checked {
+                                this.state.enable_saved_default_mode();
+                                this.toast =
+                                    Some((true, "已切换为“记忆上一个启动项”模式".to_string()));
+                            } else {
+                                let _ = this.state.set_default_entry_by_index(0);
+                                this.toast =
+                                    Some((true, "已切换为“预定义默认项 (0)”模式".to_string()));
+                            }
+                            cx.notify();
+                        })),
+                    cx,
+                ))
                 .child(setting_row(
                     "隐藏恢复模式 (GRUB_DISABLE_RECOVERY)",
                     "不在引导菜单展示 recovery mode 条目，保持菜单简洁",

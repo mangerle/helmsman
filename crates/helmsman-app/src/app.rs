@@ -65,6 +65,8 @@ pub struct HelmsmanWindow {
     pub entry_search_input: Entity<InputState>,
     /// 选中启动项自定义别名输入框状态
     pub alias_input: Entity<InputState>,
+    /// 全局内核启动参数输入框状态
+    pub cmdline_input: Entity<InputState>,
     /// 是否正在执行主题下载或安装
     pub is_installing_theme: bool,
     /// 应用自身更新状态
@@ -100,6 +102,15 @@ impl HelmsmanWindow {
             }
             input
         });
+        let initial_cmdline = state.get_cmdline_default().to_string();
+        let cmdline_input = cx.new(|cx| {
+            let mut input =
+                InputState::new(window, cx).placeholder("输入内核启动参数，如 quiet splash");
+            if !initial_cmdline.is_empty() {
+                input.set_value(initial_cmdline, window, cx);
+            }
+            input
+        });
 
         // 监听系统浅色/深色外观变化，保证“跟随系统”模式实时响应桌面环境切换
         cx.observe_window_appearance(window, |this, window, cx| {
@@ -119,6 +130,7 @@ impl HelmsmanWindow {
             theme_url_input,
             entry_search_input,
             alias_input,
+            cmdline_input,
             is_installing_theme: false,
             update_status: AppUpdateStatus::Idle,
         }
@@ -161,6 +173,39 @@ impl HelmsmanWindow {
     ) {
         self.state.set_font_scale(scale);
         self.sync_kit_theme(window, cx);
+        cx.notify();
+    }
+
+    /// 切换内核常用开关并同步刷新输入框内容
+    pub fn toggle_cmdline_flag(
+        &mut self,
+        flag: &str,
+        enabled: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(e) = self.state.set_cmdline_default_flag(flag, enabled) {
+            self.toast = Some((false, e.to_string()));
+        } else {
+            let updated = self.state.get_cmdline_default().to_string();
+            self.cmdline_input.update(cx, |input, cx| {
+                input.set_value(updated, window, cx);
+            });
+        }
+        cx.notify();
+    }
+
+    /// 将内核参数输入框中的内容应用到草稿配置
+    pub fn apply_cmdline_input(&mut self, cx: &mut Context<Self>) {
+        let value = self.cmdline_input.read(cx).value().trim().to_string();
+        match self.state.set_cmdline_default(&value) {
+            Ok(()) => {
+                self.toast = Some((true, "已更新内核启动参数草稿".to_string()));
+            }
+            Err(e) => {
+                self.toast = Some((false, e.to_string()));
+            }
+        }
         cx.notify();
     }
 

@@ -63,6 +63,32 @@ fn render_timeout_section(
                 .flex()
                 .items_center()
                 .gap_1p5()
+                .child(
+                    Button::new("timeout-dec")
+                        .outline()
+                        .xsmall()
+                        .label("-1s")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let next = (timeout - 1).max(-1);
+                            if let Err(e) = this.state.set_timeout(next) {
+                                this.toast = Some((false, e.to_string()));
+                            }
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("timeout-inc")
+                        .outline()
+                        .xsmall()
+                        .label("+1s")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let next = if timeout < 0 { 1 } else { timeout + 1 };
+                            if let Err(e) = this.state.set_timeout(next) {
+                                this.toast = Some((false, e.to_string()));
+                            }
+                            cx.notify();
+                        })),
+                )
                 .children([0, 3, 5, 10, -1].into_iter().map(|sec| {
                     let label = if sec < 0 {
                         "无限".to_string()
