@@ -1,11 +1,12 @@
 use crate::app::HelmsmanWindow;
 use crate::views::setting_row;
-use gpui_kit::assets::IconName as AssetIcon;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::label::Label;
 use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, StyledExt as _};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, StyledExt as _,
+};
 use gpui_kit::*;
 
 /// 渲染左侧引导菜单的快捷调整工具栏（支持所有可见的系统/自定义条目）
@@ -46,9 +47,9 @@ pub fn render_entry_action_bar(
                 .gap_1()
                 .child(
                     Button::new("toolbar-remove-entry")
-                        .ghost()
+                        .outline()
                         .small()
-                        .icon(AssetIcon::Trash)
+                        .icon(Icon::new(IconName::EyeOff).size_4())
                         .tooltip("移除（隐藏）当前选中的引导条目，可在下方列表恢复")
                         .disabled(!has_selected)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -63,12 +64,12 @@ pub fn render_entry_action_bar(
                             cx.notify();
                         })),
                 )
-                .child(div().w(px(1.0)).h(px(16.0)).bg(cx.theme().border))
+                .child(div().w(px(1.0)).h(px(18.0)).bg(cx.theme().border))
                 .child(
                     Button::new("toolbar-move-up")
-                        .ghost()
+                        .outline()
                         .small()
-                        .icon(AssetIcon::ArrowUp)
+                        .icon(Icon::new(IconName::ArrowUp).size_4())
                         .tooltip("将当前选中条目上移一位")
                         .disabled(!can_up)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -80,9 +81,9 @@ pub fn render_entry_action_bar(
                 )
                 .child(
                     Button::new("toolbar-move-down")
-                        .ghost()
+                        .outline()
                         .small()
-                        .icon(AssetIcon::ArrowDown)
+                        .icon(Icon::new(IconName::ArrowDown).size_4())
                         .tooltip("将当前选中条目下移一位")
                         .disabled(!can_down)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -92,12 +93,12 @@ pub fn render_entry_action_bar(
                             cx.notify();
                         })),
                 )
-                .child(div().w(px(1.0)).h(px(16.0)).bg(cx.theme().border))
+                .child(div().w(px(1.0)).h(px(18.0)).bg(cx.theme().border))
                 .child(
                     Button::new("toolbar-to-root")
-                        .ghost()
+                        .outline()
                         .small()
-                        .icon(AssetIcon::ListIndentDecrease)
+                        .icon(Icon::new(IconName::FolderOpen).size_4())
                         .tooltip("移出子菜单至主菜单根层级")
                         .disabled(!has_selected || !in_submenu)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -109,9 +110,9 @@ pub fn render_entry_action_bar(
                 )
                 .child(
                     Button::new("toolbar-to-submenu")
-                        .ghost()
+                        .outline()
                         .small()
-                        .icon(AssetIcon::ListIndentIncrease)
+                        .icon(Icon::new(IconName::Folder).size_4())
                         .tooltip("归组移入“更多系统与工具”子菜单")
                         .disabled(!has_selected || in_submenu)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -130,7 +131,7 @@ pub fn render_entry_action_bar(
             Button::new("toolbar-set-default")
                 .outline()
                 .small()
-                .icon(AssetIcon::Check)
+                .icon(Icon::new(IconName::Check).size_4())
                 .label("设为默认")
                 .disabled(!has_selected)
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -207,7 +208,7 @@ pub fn render_hidden_entries_panel(
                     Button::new(("restore-entry", idx))
                         .ghost()
                         .xsmall()
-                        .icon(AssetIcon::Undo2)
+                        .icon(IconName::Undo2)
                         .label("恢复")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if this.state.restore_entry(&restore_path) {
