@@ -53,6 +53,7 @@ pub fn render_entry_action_bar(
                         .tooltip("移除（隐藏）当前选中的引导条目，可在下方列表恢复")
                         .disabled(!has_selected)
                         .on_click(cx.listener(move |this, _, _, cx| {
+                            this.state.push_undo_snapshot();
                             if this.state.hide_entry(&path_remove) {
                                 this.toast = Some((
                                     true,
@@ -73,6 +74,7 @@ pub fn render_entry_action_bar(
                         .tooltip("将当前选中条目上移一位")
                         .disabled(!can_up)
                         .on_click(cx.listener(move |this, _, _, cx| {
+                            this.state.push_undo_snapshot();
                             if this.state.move_entry_up(&path_up) {
                                 this.toast = Some((true, "已将引导条目上移一位".to_string()));
                             }
@@ -87,6 +89,7 @@ pub fn render_entry_action_bar(
                         .tooltip("将当前选中条目下移一位")
                         .disabled(!can_down)
                         .on_click(cx.listener(move |this, _, _, cx| {
+                            this.state.push_undo_snapshot();
                             if this.state.move_entry_down(&path_down) {
                                 this.toast = Some((true, "已将引导条目下移一位".to_string()));
                             }
@@ -102,6 +105,7 @@ pub fn render_entry_action_bar(
                         .tooltip("移出子菜单至主菜单根层级")
                         .disabled(!has_selected || !in_submenu)
                         .on_click(cx.listener(move |this, _, _, cx| {
+                            this.state.push_undo_snapshot();
                             if this.state.move_entry_to_root(&path_root) {
                                 this.toast = Some((true, "已移回主菜单根层级".to_string()));
                             }
@@ -116,6 +120,7 @@ pub fn render_entry_action_bar(
                         .tooltip("归组移入“更多系统与工具”子菜单")
                         .disabled(!has_selected || in_submenu)
                         .on_click(cx.listener(move |this, _, _, cx| {
+                            this.state.push_undo_snapshot();
                             if this
                                 .state
                                 .move_entry_to_submenu(&path_sub, "更多系统与工具")

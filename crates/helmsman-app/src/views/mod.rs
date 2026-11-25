@@ -1,6 +1,8 @@
 pub mod appearance;
 pub mod appearance_controls;
 pub mod boot_entries;
+pub mod create_entry_modal;
+pub mod entry_list_item;
 pub mod entry_toolbar;
 pub mod extra_inputs;
 pub mod general;

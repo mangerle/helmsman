@@ -1,4 +1,5 @@
-use crate::app::HelmsmanWindow;
+use crate::app::{ActiveModal, HelmsmanWindow};
+use crate::views::entry_list_item::render_boot_entry_row;
 use crate::views::entry_toolbar::{
     render_custom_detail_rows, render_custom_title_row, render_entry_action_bar,
     render_hidden_entries_panel,
@@ -12,7 +13,6 @@ use gpui_kit::component::tag::{Tag, TagVariant};
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, StyledExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use grub_boot_reader::CustomBootEntry;
 use helmsman_ui::BootEntryItem;
 
 /// 渲染“启动项”主页面（左侧可滚动引导列表 + 右侧可滚动属性检查器）
@@ -99,27 +99,13 @@ fn render_entry_list_pane(
                                 ),
                         )
                         .child(
-                            Button::new("btn-add-sample-custom")
+                            Button::new("btn-open-create-wizard")
                                 .outline()
                                 .xsmall()
                                 .icon(IconName::Plus)
-                                .label("添加 ISO")
+                                .label("新建条目")
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    let idx = this.state.draft_custom_entries.len() + 1;
-                                    let entry = CustomBootEntry::new_iso_boot(
-                                        format!("custom_iso_{idx}"),
-                                        format!("自定义 Live ISO #{idx}"),
-                                        "/boot/iso/live.iso",
-                                        "0000-0000",
-                                        "",
-                                    );
-                                    this.state.add_custom_entry(entry);
-                                    this.toast = Some((
-                                        true,
-                                        format!(
-                                            "已添加自定义 ISO 草稿条目 #{idx}（审核保存后生效）"
-                                        ),
-                                    ));
+                                    this.active_modal = ActiveModal::CreateCustomEntry;
                                     cx.notify();
                                 })),
                         ),
@@ -144,121 +130,13 @@ fn render_entry_list_pane(
                         ),
                     )
                 })
-                .children(filtered_items.into_iter().enumerate().map(|(idx, item)| {
-                    let is_selected = selected_path == Some(item.full_path.as_str());
-                    let full_path = item.full_path.clone();
-                    let entry_id = item.id.clone();
-                    let is_custom = item.is_custom;
-
-                    div()
-                        .id(("boot-entry-row", idx))
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap_2()
-                        .p_3()
-                        .rounded_xl()
-                        .border_1()
-                        .border_color(if is_selected {
-                            cx.theme().primary
-                        } else {
-                            cx.theme().border.opacity(0.6)
-                        })
-                        .bg(if is_selected {
-                            cx.theme().primary.opacity(0.14)
-                        } else {
-                            cx.theme().background.opacity(0.75)
-                        })
-                        .hover(|s| {
-                            s.bg(if is_selected {
-                                cx.theme().primary.opacity(0.18)
-                            } else {
-                                cx.theme().secondary.opacity(0.5)
-                            })
-                        })
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.select_boot_entry(&full_path, window, cx);
-                        }))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2p5()
-                                .min_w_0()
-                                .flex_1()
-                                .child(div().w(px(6.0)).h(px(28.0)).rounded_full().bg(
-                                    if item.is_default {
-                                        cx.theme().primary
-                                    } else if is_selected {
-                                        cx.theme().primary.opacity(0.45)
-                                    } else {
-                                        cx.theme().border
-                                    },
-                                ))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .min_w_0()
-                                        .flex_1()
-                                        .gap_0p5()
-                                        .child(
-                                            Label::new(item.display_title.clone())
-                                                .text_xs()
-                                                .font_semibold(),
-                                        )
-                                        .child(
-                                            Label::new(match &item.submenu_name {
-                                                Some(sub) => format!("子菜单: {sub}"),
-                                                None => item.full_path.clone(),
-                                            })
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground),
-                                        ),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .when(item.is_default, |el| {
-                                    el.child(
-                                        Tag::new()
-                                            .with_variant(TagVariant::Primary)
-                                            .xsmall()
-                                            .child("默认"),
-                                    )
-                                })
-                                .when(is_custom, |el| {
-                                    el.child(
-                                        Tag::new()
-                                            .with_variant(TagVariant::Info)
-                                            .xsmall()
-                                            .child("自定义"),
-                                    )
-                                })
-                                .when(is_custom, |el| {
-                                    let del_id = entry_id.clone().unwrap_or_default();
-                                    el.child(
-                                        Button::new(("del-custom", idx))
-                                            .ghost()
-                                            .xsmall()
-                                            .icon(IconName::Delete)
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                if this.state.remove_custom_entry(&del_id) {
-                                                    this.toast = Some((
-                                                        true,
-                                                        format!("已移除自定义条目 '{del_id}'"),
-                                                    ));
-                                                }
-                                                cx.notify();
-                                            })),
-                                    )
-                                }),
-                        )
-                })),
+                .children(render_tree_items(
+                    win,
+                    &filtered_items,
+                    selected_path,
+                    !query.is_empty(),
+                    cx,
+                )),
         )
         .child(render_hidden_entries_panel(win, cx))
         .child(
@@ -390,9 +268,114 @@ fn render_inspector_pane(
         })
         .child(
             section_card("提示", cx).child(
-                Label::new("默认启动项模式、等待倒计时、os-prober 与全局内核参数（quiet / splash / nomodeset）已统一归口至左侧导航的“常规引导设置”页面。")
+                Label::new("提示：支持在左侧列表直接鼠标拖拽调整顺序、右键打开快捷菜单、点击子菜单折叠/展开，以及键盘 ↑/↓/Delete/Ctrl+Z/Ctrl+S 快捷操作。")
                     .text_xs()
                     .text_color(cx.theme().muted_foreground),
             ),
         )
+}
+
+/// 按树形可折叠子菜单组织渲染左侧引导条目列表
+fn render_tree_items(
+    win: &HelmsmanWindow,
+    items: &[&BootEntryItem],
+    selected_path: Option<&str>,
+    is_searching: bool,
+    cx: &mut Context<HelmsmanWindow>,
+) -> Vec<AnyElement> {
+    let mut elements = Vec::with_capacity(items.len() + 4);
+    let mut rendered_submenus: Vec<String> = Vec::new();
+
+    for (idx, item) in items.iter().enumerate() {
+        match &item.submenu_name {
+            None => {
+                elements.push(
+                    render_boot_entry_row(win, idx, item, selected_path, false, cx)
+                        .into_any_element(),
+                );
+            }
+            Some(sub_name) if is_searching => {
+                elements.push(
+                    render_boot_entry_row(win, idx, item, selected_path, false, cx)
+                        .into_any_element(),
+                );
+                let _ = sub_name;
+            }
+            Some(sub_name) => {
+                if rendered_submenus.contains(sub_name) {
+                    continue;
+                }
+                rendered_submenus.push(sub_name.clone());
+                let is_collapsed = win.collapsed_submenus.contains(sub_name);
+                let member_count = items
+                    .iter()
+                    .filter(|it| it.submenu_name.as_deref() == Some(sub_name.as_str()))
+                    .count();
+                let sub_toggle = sub_name.clone();
+
+                elements.push(
+                    div()
+                        .id(("submenu-group", idx))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .px_2p5()
+                        .py_1p5()
+                        .rounded_lg()
+                        .bg(cx.theme().secondary.opacity(0.45))
+                        .hover(|s| s.bg(cx.theme().secondary.opacity(0.7)))
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if !this.collapsed_submenus.remove(&sub_toggle) {
+                                this.collapsed_submenus.insert(sub_toggle.clone());
+                            }
+                            cx.notify();
+                        }))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1p5()
+                                .child(if is_collapsed {
+                                    IconName::ChevronRight
+                                } else {
+                                    IconName::ChevronDown
+                                })
+                                .child(if is_collapsed {
+                                    IconName::Folder
+                                } else {
+                                    IconName::FolderOpen
+                                })
+                                .child(Label::new(sub_name.clone()).text_xs().font_semibold()),
+                        )
+                        .child(
+                            Tag::new()
+                                .with_variant(TagVariant::Secondary)
+                                .xsmall()
+                                .child(format!("{member_count}")),
+                        )
+                        .into_any_element(),
+                );
+
+                if !is_collapsed {
+                    for (m_idx, member) in items.iter().enumerate() {
+                        if member.submenu_name.as_deref() == Some(sub_name.as_str()) {
+                            elements.push(
+                                render_boot_entry_row(
+                                    win,
+                                    1000 + m_idx,
+                                    member,
+                                    selected_path,
+                                    true,
+                                    cx,
+                                )
+                                .into_any_element(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    elements
 }

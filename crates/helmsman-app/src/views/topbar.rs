@@ -88,6 +88,18 @@ pub fn render_topbar(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> 
                             this.open_preview_modal(cx);
                         })),
                 )
+                .when(win.state.can_undo(), |el| {
+                    el.child(
+                        Button::new("btn-undo")
+                            .ghost()
+                            .small()
+                            .icon(IconName::Undo2)
+                            .label("撤销")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.perform_undo(cx);
+                            })),
+                    )
+                })
                 .when(has_changes, |el| {
                     el.child(
                         Button::new("btn-reset")

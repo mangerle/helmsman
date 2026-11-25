@@ -76,6 +76,33 @@ impl AppState {
         false
     }
 
+    /// 将任意引导条目直接拖拽移动至目标条目的位置
+    pub fn move_entry_to(&mut self, source_path: &str, target_path: &str) -> bool {
+        if source_path == target_path {
+            return false;
+        }
+        self.ensure_order_initialized();
+        let Some(src_idx) = self
+            .draft_menu_layout
+            .order
+            .iter()
+            .position(|k| k == source_path)
+        else {
+            return false;
+        };
+        let Some(dst_idx) = self
+            .draft_menu_layout
+            .order
+            .iter()
+            .position(|k| k == target_path)
+        else {
+            return false;
+        };
+        let item = self.draft_menu_layout.order.remove(src_idx);
+        self.draft_menu_layout.order.insert(dst_idx, item);
+        true
+    }
+
     /// 移除（隐藏）任意引导条目，使其暂不出现在主引导菜单中，并支持单条恢复
     pub fn hide_entry(&mut self, full_path: &str) -> bool {
         if full_path.is_empty() || self.draft_menu_layout.hidden.iter().any(|h| h == full_path) {
@@ -240,5 +267,9 @@ menuentry 'Windows Boot Manager' --id 'win-efi' {
             renamed.map(|i| i.display_title).as_deref(),
             Some("Windows 11")
         );
+
+        // 5. 任意位置拖拽排序
+        assert!(state.move_entry_to("Windows Boot Manager", "Ubuntu 24.04 LTS"));
+        assert_eq!(state.get_entry_items()[0].full_path, "Windows Boot Manager");
     }
 }

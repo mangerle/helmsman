@@ -15,6 +15,17 @@ use grub_config_parser::{
 };
 use std::collections::HashMap;
 
+/// 草稿撤销历史最大深度（防止连续操作无限占用内存）
+const MAX_UNDO_HISTORY: usize = 32;
+
+/// 内存草稿撤销快照
+#[derive(Debug, Clone)]
+pub struct DraftSnapshot {
+    pub config: GrubConfigFile,
+    pub custom_entries: Vec<CustomBootEntry>,
+    pub menu_layout: MenuLayout,
+}
+
 /// 前端主应用状态机
 ///
 /// # 设计原理
@@ -47,6 +58,8 @@ pub struct AppState {
     pub theme_mode: ThemeMode,
     /// 界面字体缩放级别
     pub font_scale: FontScale,
+    /// 草稿撤销栈（用于 Ctrl+Z 撤销操作）
+    undo_stack: Vec<DraftSnapshot>,
 }
 
 impl AppState {
@@ -77,6 +90,7 @@ impl AppState {
             selected_entry_path: first_entry,
             theme_mode: ThemeMode::default(),
             font_scale: FontScale::default(),
+            undo_stack: Vec::new(),
         }
     }
 
@@ -117,6 +131,35 @@ impl AppState {
         self.draft_config = self.original_config.clone();
         self.draft_custom_entries = self.original_custom_entries.clone();
         self.draft_menu_layout = self.original_menu_layout.clone();
+        self.undo_stack.clear();
+    }
+
+    /// 记录当前草稿快照至撤销栈（在执行用户编辑操作前调用）
+    pub fn push_undo_snapshot(&mut self) {
+        if self.undo_stack.len() >= MAX_UNDO_HISTORY {
+            self.undo_stack.remove(0);
+        }
+        self.undo_stack.push(DraftSnapshot {
+            config: self.draft_config.clone(),
+            custom_entries: self.draft_custom_entries.clone(),
+            menu_layout: self.draft_menu_layout.clone(),
+        });
+    }
+
+    /// 撤销最近一次草稿操作（Ctrl+Z）
+    pub fn undo(&mut self) -> bool {
+        let Some(prev) = self.undo_stack.pop() else {
+            return false;
+        };
+        self.draft_config = prev.config;
+        self.draft_custom_entries = prev.custom_entries;
+        self.draft_menu_layout = prev.menu_layout;
+        true
+    }
+
+    /// 是否存在可撤销的草稿操作
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
     }
 
     /// 获取当前界面的扁平条目单选模型列表（结合别名、过滤、自定义项与布局编排）

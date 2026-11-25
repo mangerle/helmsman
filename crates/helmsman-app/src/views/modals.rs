@@ -1,4 +1,5 @@
 use crate::app::{ActiveModal, HelmsmanWindow};
+use crate::views::create_entry_modal::render_create_entry_modal;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::label::Label;
 use gpui_kit::component::scroll::ScrollableElement as _;
@@ -25,6 +26,7 @@ pub fn render_active_modal(
         .child(match win.active_modal {
             ActiveModal::ApplyDiffReview => render_apply_diff_modal(win, cx).into_any_element(),
             ActiveModal::MenuPreview => render_menu_preview_modal(win, cx).into_any_element(),
+            ActiveModal::CreateCustomEntry => render_create_entry_modal(win, cx).into_any_element(),
             ActiveModal::None => div().into_any_element(),
         })
 }

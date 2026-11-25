@@ -1,6 +1,7 @@
 use crate::backend::{self, BackendSnapshot};
 use crate::views;
 use crate::views::appearance_controls::AppearanceControls;
+use crate::views::create_entry_modal::CreateEntryWizard;
 use crate::views::extra_inputs::ExtraFormInputs;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::InputState;
@@ -13,6 +14,7 @@ use helmsman_ui::{
     AppState, FontScale, MenuPreviewModel, ResolvedTheme, SystemColorScheme, ThemeMode,
 };
 use helmsman_updater::UpdateInfo;
+use std::collections::HashSet;
 use tracing::{info, warn};
 
 /// 应用自更新状态（基于 shipup）
@@ -44,6 +46,7 @@ pub enum ActiveModal {
     None,
     ApplyDiffReview,
     MenuPreview,
+    CreateCustomEntry,
 }
 
 /// Helmsman 桌面主窗口实体
@@ -76,6 +79,12 @@ pub struct HelmsmanWindow {
     pub appearance_controls: AppearanceControls,
     /// 高级环境变量与自定义条目完整属性表单输入框集合
     pub extra_inputs: ExtraFormInputs,
+    /// 新建自定义引导条目向导状态
+    pub create_wizard: CreateEntryWizard,
+    /// 左侧树形引导列表中当前被折叠的子菜单标题集合
+    pub collapsed_submenus: HashSet<String>,
+    /// 主窗口键盘焦点句柄（用于全局快捷键响应）
+    pub focus_handle: FocusHandle,
     /// 是否正在执行主题下载或安装
     pub is_installing_theme: bool,
     /// 应用自身更新状态
@@ -130,6 +139,8 @@ impl HelmsmanWindow {
             .and_then(|e| e.id.as_deref())
             .and_then(|id| state.draft_custom_entries.iter().find(|c| c.id == id));
         let extra_inputs = ExtraFormInputs::new(initial_custom, window, cx);
+        let create_wizard = CreateEntryWizard::new(window, cx);
+        let focus_handle = cx.focus_handle();
 
         // 监听系统浅色/深色外观变化，保证“跟随系统”模式实时响应桌面环境切换
         cx.observe_window_appearance(window, |this, window, cx| {
@@ -153,6 +164,9 @@ impl HelmsmanWindow {
             custom_title_input,
             appearance_controls,
             extra_inputs,
+            create_wizard,
+            collapsed_submenus: HashSet::new(),
+            focus_handle,
             is_installing_theme: false,
             update_status: AppUpdateStatus::Idle,
         }
@@ -228,178 +242,6 @@ impl HelmsmanWindow {
                 self.toast = Some((false, e.to_string()));
             }
         }
-        cx.notify();
-    }
-
-    /// 选中启动条目并同步刷新别名输入框内容
-    pub fn select_boot_entry(
-        &mut self,
-        full_path: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.state.select_entry(full_path);
-        let alias = self
-            .state
-            .get_selected_entry()
-            .and_then(|e| {
-                e.id.as_deref()
-                    .and_then(|id| self.state.get_entry_alias(id))
-                    .or_else(|| self.state.get_entry_alias(&e.title))
-            })
-            .unwrap_or("")
-            .to_string();
-        self.alias_input.update(cx, |input, cx| {
-            input.set_value(alias, window, cx);
-        });
-        let menu_title = self
-            .state
-            .get_selected_entry()
-            .map(|e| {
-                self.state
-                    .get_entry_title_override(&e.full_path)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| e.title.clone())
-            })
-            .unwrap_or_default();
-        self.custom_title_input.update(cx, |input, cx| {
-            input.set_value(menu_title, window, cx);
-        });
-        let selected_custom = self
-            .state
-            .get_selected_entry()
-            .and_then(|e| e.id.as_deref())
-            .and_then(|id| {
-                self.state
-                    .draft_custom_entries
-                    .iter()
-                    .find(|c| c.id == id)
-                    .cloned()
-            });
-        self.extra_inputs
-            .sync_selected_custom(selected_custom.as_ref(), window, cx);
-        cx.notify();
-    }
-
-    /// 保存当前选中自定义条目的完整引导属性（路径、UUID、参数与子菜单名称）
-    pub fn save_selected_custom_details(&mut self, cx: &mut Context<Self>) {
-        let Some(entry_id) = self.state.get_selected_entry().and_then(|e| e.id.clone()) else {
-            return;
-        };
-        let Some(mut custom) = self
-            .state
-            .draft_custom_entries
-            .iter()
-            .find(|c| c.id == entry_id)
-            .cloned()
-        else {
-            return;
-        };
-        custom.target_path = self
-            .extra_inputs
-            .custom_target_input
-            .read(cx)
-            .value()
-            .trim()
-            .to_string();
-        custom.partition_uuid = self
-            .extra_inputs
-            .custom_uuid_input
-            .read(cx)
-            .value()
-            .trim()
-            .to_string();
-        custom.cmdline_params = self
-            .extra_inputs
-            .custom_cmdline_input
-            .read(cx)
-            .value()
-            .trim()
-            .to_string();
-        custom.submenu_title = self
-            .extra_inputs
-            .custom_submenu_input
-            .read(cx)
-            .value()
-            .trim()
-            .to_string();
-
-        if self.state.update_custom_entry(custom) {
-            self.toast = Some((
-                true,
-                "已更新自定义引导条目属性草稿（审核保存后生效）".to_string(),
-            ));
-        }
-        cx.notify();
-    }
-
-    /// 保存当前选中引导条目（系统条目或自定义条目）在 GRUB 开机菜单中的显示名称
-    pub fn save_selected_entry_title(&mut self, cx: &mut Context<Self>) {
-        let Some(entry) = self.state.get_selected_entry().cloned() else {
-            return;
-        };
-        let new_title = self.custom_title_input.read(cx).value().trim().to_string();
-
-        if let Some(entry_id) = entry.id.as_deref()
-            && let Some(mut custom) = self
-                .state
-                .draft_custom_entries
-                .iter()
-                .find(|c| c.id == entry_id)
-                .cloned()
-        {
-            if new_title.is_empty() {
-                self.toast = Some((false, "自定义条目显示名称不能为空".to_string()));
-                cx.notify();
-                return;
-            }
-            custom.title = new_title.clone();
-            if self.state.update_custom_entry(custom) {
-                self.state.select_entry(&new_title);
-                self.toast = Some((
-                    true,
-                    format!("已将 GRUB 菜单显示名称更新为 '{new_title}'（审核保存后生效）"),
-                ));
-            }
-            cx.notify();
-            return;
-        }
-
-        if self.state.rename_entry(&entry.full_path, &new_title) {
-            let msg = if new_title.is_empty() {
-                format!("已恢复 '{}' 的原始 GRUB 菜单名称", entry.title)
-            } else {
-                format!("已将 GRUB 菜单显示名称修改为 '{new_title}'（审核保存后生效）")
-            };
-            self.toast = Some((true, msg));
-        }
-        cx.notify();
-    }
-
-    /// 保存当前选中启动项的自定义友好别名
-    pub fn save_selected_entry_alias(&mut self, cx: &mut Context<Self>) {
-        let Some(entry) = self.state.get_selected_entry().cloned() else {
-            return;
-        };
-        let key = entry.id.unwrap_or_else(|| entry.title.clone());
-        let alias = self.alias_input.read(cx).value().trim().to_string();
-
-        if !self.backend.is_demo_mode
-            && let Err(e) = backend::set_entry_alias(&key, &alias)
-        {
-            warn!("保存引导项别名失败: {e}");
-            self.toast = Some((false, e));
-            cx.notify();
-            return;
-        }
-
-        self.state.set_entry_alias(&key, &alias);
-        let msg = if alias.is_empty() {
-            format!("已清除条目 '{key}' 的自定义别名")
-        } else {
-            format!("已将条目别名更新为 '{alias}'")
-        };
-        self.toast = Some((true, msg));
         cx.notify();
     }
 
@@ -554,6 +396,8 @@ impl Render for HelmsmanWindow {
             .flex()
             .flex_col()
             .size_full()
+            .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(Self::handle_key_down))
             .text_size(cx.theme().font_size)
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
