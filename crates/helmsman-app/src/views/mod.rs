@@ -10,6 +10,7 @@ pub mod modals;
 pub mod nav_rail;
 pub mod settings_about;
 pub mod snapshots;
+pub mod system_tools;
 pub mod topbar;
 
 use gpui_kit::component::label::Label;

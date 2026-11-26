@@ -66,4 +66,51 @@ impl HelmsmanWindow {
         }
         cx.notify();
     }
+
+    /// 切换 `/etc/grub.d/` 原生脚本的可执行权限（启用/禁用）
+    pub fn toggle_grub_script_action(
+        &mut self,
+        script_name: &str,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.backend.is_demo_mode {
+            if let Some(script) = self
+                .backend
+                .grub_scripts
+                .iter_mut()
+                .find(|s| s.name == script_name)
+            {
+                script.enabled = enabled;
+            }
+            self.toast = Some((
+                true,
+                format!(
+                    "演示模式：已{}脚本 {script_name}",
+                    if enabled { "启用" } else { "禁用" }
+                ),
+            ));
+            cx.notify();
+            return;
+        }
+
+        match backend::set_grub_script_enabled(script_name, enabled) {
+            Ok(()) => {
+                if let Ok(refreshed) = backend::list_grub_scripts() {
+                    self.backend.grub_scripts = refreshed;
+                }
+                self.toast = Some((
+                    true,
+                    format!(
+                        "已{}原生脚本 {script_name}（点击顶部“审核并保存”重建菜单后生效）",
+                        if enabled { "启用" } else { "禁用" }
+                    ),
+                ));
+            }
+            Err(e) => {
+                self.toast = Some((false, e));
+            }
+        }
+        cx.notify();
+    }
 }

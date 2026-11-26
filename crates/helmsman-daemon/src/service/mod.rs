@@ -1,6 +1,7 @@
 mod apply;
 pub(crate) mod apply_support;
 mod error;
+mod grub_scripts;
 mod ops;
 mod sys_tools;
 mod theme_ops;

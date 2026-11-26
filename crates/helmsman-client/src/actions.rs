@@ -12,4 +12,10 @@ pub mod polkit_actions {
     pub const ACTION_SET_ALIAS: &str = "org.freedesktop.Helmsman.set-alias";
     /// 安装 GRUB 主题压缩包
     pub const ACTION_INSTALL_THEME: &str = "org.freedesktop.Helmsman.install-theme";
+    /// 管理 /etc/grub.d/ 原生脚本启用状态
+    pub const ACTION_MANAGE_SCRIPTS: &str = "org.freedesktop.Helmsman.manage-scripts";
+    /// 重装 GRUB 引导程序到磁盘 MBR 或 EFI 分区
+    pub const ACTION_REINSTALL_GRUB: &str = "org.freedesktop.Helmsman.reinstall-grub";
+    /// 切换目标系统挂载根目录（Live USB 修复模式）
+    pub const ACTION_SWITCH_ROOT: &str = "org.freedesktop.Helmsman.switch-root";
 }

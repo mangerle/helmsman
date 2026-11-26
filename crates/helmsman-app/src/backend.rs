@@ -1,7 +1,7 @@
 use grub_boot_reader::{CustomBootEntry, MenuLayout};
 use helmsman_client::{
-    ApplyResultDto, CustomBootEntryDto, HelmsmanApiProxyBlocking, SnapshotDto, SystemFontDto,
-    SystemStatusDto, ThemeInfoDto,
+    ApplyResultDto, CustomBootEntryDto, GrubScriptDto, HelmsmanApiProxyBlocking, SnapshotDto,
+    SystemFontDto, SystemStatusDto, ThemeInfoDto,
 };
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -74,6 +74,8 @@ pub struct BackendSnapshot {
     pub aliases: HashMap<String, String>,
     /// 系统可用字体列表
     pub system_fonts: Vec<SystemFontDto>,
+    /// `/etc/grub.d/` 原生引导脚本列表
+    pub grub_scripts: Vec<GrubScriptDto>,
     /// 是否处于未连接守护进程的离线演示模式
     pub is_demo_mode: bool,
     /// 顶部连接状态说明
@@ -143,6 +145,36 @@ menuentry 'Windows Boot Manager (on /dev/nvme0n1p1)' --class windows --id 'ospro
                 style: "Regular".to_string(),
                 file_path: "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc".to_string(),
             }],
+            grub_scripts: vec![
+                GrubScriptDto {
+                    name: "00_header".to_string(),
+                    enabled: true,
+                    size_bytes: 10240,
+                    is_helmsman_managed: false,
+                    content: "#!/bin/sh\n# GRUB 全局头部配置脚本（演示模式）\n".to_string(),
+                },
+                GrubScriptDto {
+                    name: "10_linux".to_string(),
+                    enabled: true,
+                    size_bytes: 18432,
+                    is_helmsman_managed: false,
+                    content: "#!/bin/sh\n# Linux 内核自动探测脚本（演示模式）\n".to_string(),
+                },
+                GrubScriptDto {
+                    name: "30_os-prober".to_string(),
+                    enabled: true,
+                    size_bytes: 9216,
+                    is_helmsman_managed: false,
+                    content: "#!/bin/sh\n# 跨系统引导探测脚本（演示模式）\n".to_string(),
+                },
+                GrubScriptDto {
+                    name: "40_custom".to_string(),
+                    enabled: true,
+                    size_bytes: 214,
+                    is_helmsman_managed: false,
+                    content: "#!/bin/sh\nexec tail -n +3 $0\n".to_string(),
+                },
+            ],
             is_demo_mode: true,
             status_note: format!("演示模式（未连接守护进程: {reason}）"),
         }
@@ -181,6 +213,7 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         .and_then(|raw| serde_json::from_str::<MenuLayout>(&raw).ok())
         .unwrap_or_default();
     let system_fonts = proxy.list_system_fonts().unwrap_or_default();
+    let grub_scripts = proxy.list_grub_scripts().unwrap_or_default();
     let status_note = format!(
         "已连接 · {} ({:?})",
         system_status.distro_name, system_status.firmware_type
@@ -196,6 +229,7 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         menu_layout,
         aliases,
         system_fonts,
+        grub_scripts,
         is_demo_mode: false,
         status_note,
     })
@@ -288,6 +322,22 @@ pub fn convert_grub_font(
     proxy
         .convert_grub_font(src_path, font_size, output_name)
         .map_err(|e| format!("转换 GRUB 字体失败: {e}"))
+}
+
+/// 刷新 `/etc/grub.d/` 原生脚本列表
+pub fn list_grub_scripts() -> Result<Vec<GrubScriptDto>, String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .list_grub_scripts()
+        .map_err(|e| format!("读取引导脚本列表失败: {e}"))
+}
+
+/// 切换 `/etc/grub.d/` 原生脚本启用状态
+pub fn set_grub_script_enabled(script_name: &str, enabled: bool) -> Result<(), String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .set_grub_script_enabled(script_name, enabled)
+        .map_err(|e| format!("修改脚本启用状态失败: {e}"))
 }
 
 /// 临时下载文件 RAII 守卫，确保退出作用域时自动删除临时压缩包

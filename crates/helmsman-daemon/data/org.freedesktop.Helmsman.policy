@@ -77,4 +77,40 @@
       <allow_active>auth_admin</allow_active>
     </defaults>
   </action>
+
+  <action id="org.freedesktop.Helmsman.manage-scripts">
+    <description>Enable or disable native /etc/grub.d scripts</description>
+    <description xml:lang="zh_CN">启用或禁用 /etc/grub.d 原生引导脚本</description>
+    <message>Authentication is required to modify /etc/grub.d script permissions</message>
+    <message xml:lang="zh_CN">修改 /etc/grub.d 引导脚本启用状态需要管理员身份验证</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.Helmsman.reinstall-grub">
+    <description>Reinstall GRUB bootloader to MBR or EFI partition</description>
+    <description xml:lang="zh_CN">重装 GRUB 引导程序到磁盘 MBR 或 EFI 分区</description>
+    <message>Authentication is required to reinstall the GRUB bootloader</message>
+    <message xml:lang="zh_CN">重装系统 GRUB 引导程序属于高危磁盘操作，需要管理员身份验证</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.Helmsman.switch-root">
+    <description>Switch target root directory for offline GRUB repair</description>
+    <description xml:lang="zh_CN">切换目标系统挂载根目录（离线修复引导）</description>
+    <message>Authentication is required to switch the target system root directory</message>
+    <message xml:lang="zh_CN">切换目标系统挂载根目录需要管理员身份验证</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
 </policyconfig>

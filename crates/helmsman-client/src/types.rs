@@ -48,6 +48,21 @@ pub struct SystemFontDto {
     pub file_path: String,
 }
 
+/// `/etc/grub.d/` 原生引导脚本 DTO
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct GrubScriptDto {
+    /// 脚本文件名（如 10_linux）
+    pub name: String,
+    /// 是否具备可执行权限（决定是否参与 update-grub 生成）
+    pub enabled: bool,
+    /// 文件大小（字节）
+    pub size_bytes: u64,
+    /// 是否为 Helmsman 托管生成的自定义脚本
+    pub is_helmsman_managed: bool,
+    /// 脚本原文内容（截断保护上限 256 KiB）
+    pub content: String,
+}
+
 /// 历史快照 DTO
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct SnapshotDto {

@@ -138,6 +138,15 @@ pub fn render_nav_rail(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -
                     win.active_tab,
                     collapsed,
                     cx,
+                ))
+                .child(nav_item(
+                    "nav-system-tools",
+                    "系统救援与脚本",
+                    IconName::Settings2,
+                    ActiveTab::SystemTools,
+                    win.active_tab,
+                    collapsed,
+                    cx,
                 )),
         )
         .child(

@@ -36,6 +36,7 @@ pub enum ActiveTab {
     General,
     Appearance,
     Snapshots,
+    SystemTools,
     Settings,
     About,
 }
@@ -89,6 +90,10 @@ pub struct HelmsmanWindow {
     pub is_installing_theme: bool,
     /// 应用自身更新状态
     pub update_status: AppUpdateStatus,
+    /// 当前在系统工具页选中查看的原生脚本名称
+    pub selected_script_name: Option<String>,
+    /// 重装 GRUB 引导模式（true = UEFI，false = BIOS/MBR）
+    pub reinstall_mode_uefi: bool,
 }
 
 impl HelmsmanWindow {
@@ -149,6 +154,11 @@ impl HelmsmanWindow {
         })
         .detach();
 
+        let reinstall_mode_uefi = backend
+            .system_status
+            .as_ref()
+            .is_none_or(|s| s.firmware_type.to_ascii_lowercase().contains("uefi"));
+
         Self {
             state,
             backend,
@@ -169,6 +179,8 @@ impl HelmsmanWindow {
             focus_handle,
             is_installing_theme: false,
             update_status: AppUpdateStatus::Idle,
+            selected_script_name: None,
+            reinstall_mode_uefi,
         }
     }
 
@@ -452,6 +464,10 @@ impl Render for HelmsmanWindow {
                                 }
                                 ActiveTab::Snapshots => {
                                     views::snapshots::render_snapshots(self, cx).into_any_element()
+                                }
+                                ActiveTab::SystemTools => {
+                                    views::system_tools::render_system_tools(self, cx)
+                                        .into_any_element()
                                 }
                                 ActiveTab::Settings => {
                                     views::settings_about::render_settings(self, cx)

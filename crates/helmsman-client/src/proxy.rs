@@ -1,6 +1,6 @@
 use crate::types::{
-    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemFontDto, SystemStatusDto,
-    ThemeInfoDto,
+    ApplyResultDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto, SystemFontDto,
+    SystemStatusDto, ThemeInfoDto,
 };
 use std::collections::HashMap;
 
@@ -110,4 +110,10 @@ pub trait HelmsmanApi {
         font_size: u16,
         output_name: &str,
     ) -> zbus::Result<String>;
+
+    /// 列出 /etc/grub.d/ 原生引导脚本及其启用状态与源码
+    fn list_grub_scripts(&self) -> zbus::Result<Vec<GrubScriptDto>>;
+
+    /// 启用或禁用指定 /etc/grub.d/ 原生引导脚本（修改可执行位）
+    fn set_grub_script_enabled(&self, script_name: &str, enabled: bool) -> zbus::Result<()>;
 }

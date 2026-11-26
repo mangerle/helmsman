@@ -2,8 +2,8 @@ use crate::audit::resolve_caller_uid_from_bus;
 use crate::custom_manager::CustomManager;
 use crate::dbus_api::error::HelmsmanDbusError;
 use crate::dbus_api::{
-    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemFontDto, SystemStatusDto,
-    ThemeInfoDto, polkit_actions,
+    ApplyResultDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto, SystemFontDto,
+    SystemStatusDto, ThemeInfoDto, polkit_actions,
 };
 use crate::idle::IdleWatcher;
 use crate::polkit::check_polkit_authorization;
@@ -685,6 +685,41 @@ impl HelmsmanDbusAdapter {
         };
         spawn_service_task("GRUB 字体转换任务", move || {
             service.convert_grub_font_as(&params, caller_uid)
+        })
+        .await
+    }
+
+    /// 列出 /etc/grub.d/ 原生脚本及其启用状态与源码
+    pub async fn list_grub_scripts(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<Vec<GrubScriptDto>, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        let service = Arc::clone(&self.service);
+        spawn_service_task("引导脚本扫描任务", move || {
+            service.list_grub_scripts()
+        })
+        .await
+    }
+
+    /// 启用或禁用 /etc/grub.d/ 原生引导脚本
+    pub async fn set_grub_script_enabled(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        script_name: &str,
+        enabled: bool,
+    ) -> Result<(), HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_MANAGE_SCRIPTS)
+            .await?;
+        let service = Arc::clone(&self.service);
+        let name = script_name.to_string();
+        spawn_service_task("引导脚本权限变更任务", move || {
+            service.set_grub_script_enabled_as(&name, enabled, caller_uid)
         })
         .await
     }
