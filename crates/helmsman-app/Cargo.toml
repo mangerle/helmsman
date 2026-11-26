@@ -30,9 +30,16 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 maintainer = "wangle"
 section = "admin"
 priority = "optional"
-depends = "$auto, policykit-1, dbus"
+revision = ""
+depends = "$auto, policykit-1 | polkitd, dbus, systemd"
+maintainer-scripts = "../../packaging/linux/deb"
 assets = [
     ["target/release/helmsman-app", "usr/bin/", "755"],
+    ["target/release/helmsman-daemon", "usr/libexec/helmsman-daemon", "755"],
     ["../../packaging/linux/helmsman.desktop", "usr/share/applications/helmsman.desktop", "644"],
     ["../../assets/logo.svg", "usr/share/icons/hicolor/scalable/apps/helmsman.svg", "644"],
+    ["../../crates/helmsman-daemon/data/org.freedesktop.Helmsman.policy", "usr/share/polkit-1/actions/org.freedesktop.Helmsman.policy", "644"],
+    ["../../crates/helmsman-daemon/data/org.freedesktop.Helmsman.service", "usr/share/dbus-1/system-services/org.freedesktop.Helmsman.service", "644"],
+    ["../../crates/helmsman-daemon/data/org.freedesktop.Helmsman.conf", "usr/share/dbus-1/system.d/org.freedesktop.Helmsman.conf", "644"],
+    ["../../crates/helmsman-daemon/data/helmsman.service", "lib/systemd/system/helmsman.service", "644"],
 ]

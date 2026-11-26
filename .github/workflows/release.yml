@@ -2,7 +2,7 @@ name: Release
 
 # Helmsman Linux 自动构建与标签发布流水线：
 # - 触发方式：推送符合 v* 语义化版本格式的 Tag（如 v0.1.0）或手动触发
-# - 产出：helmsman-app (.deb) 与 helmsman-daemon (.tar.gz)，
+# - 产出：helmsman-app (.deb，已内置 helmsman-daemon 及 Polkit/D-Bus/systemd 集成配置)，
 #   并通过 shipup-cli 生成带 Ed25519 签名的 latest.json 清单以支持应用自更新。
 
 on:
@@ -171,10 +171,6 @@ jobs:
           DEB="$(find target -path '*/debian/*.deb' -type f | head -n 1)"
           if [ -z "$DEB" ]; then echo "::error::未找到 DEB 产物"; exit 1; fi
           cp "$DEB" "dist/helmsman_${VERSION}_linux_${ARCH}.deb"
-          tar -czf "dist/helmsman-daemon_${VERSION}_linux_${ARCH}.tar.gz" \
-            -C "${ROOT_DIR}/target/${TARGET}/release" helmsman-daemon \
-            -C "${ROOT_DIR}/crates/helmsman-daemon/data" \
-            org.freedesktop.Helmsman.policy org.freedesktop.Helmsman.service helmsman.service
           ls -lh dist
 
       - name: 上传 Linux 构建产物
@@ -264,7 +260,6 @@ jobs:
           body_path: release-files/RELEASE_CHANGELOG.md
           files: |
             release-files/*.deb
-            release-files/*.tar.gz
             release-files/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
