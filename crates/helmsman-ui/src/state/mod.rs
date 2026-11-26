@@ -273,10 +273,31 @@ impl AppState {
         self.draft_config.get("GRUB_DEFAULT") == Some("saved")
     }
 
-    /// 启用 saved 快速引导模式
+    /// 启用 saved 快速引导模式（同步开启 GRUB_SAVEDEFAULT）
     pub fn enable_saved_default_mode(&mut self) {
         let _ = cfg_set_default_entry(&mut self.draft_config, &DefaultEntry::Saved);
         self.draft_config.set("GRUB_SAVEDEFAULT", "true");
+    }
+
+    /// 关闭 saved 快速引导模式并回退至指定默认索引（同时清理 GRUB_SAVEDEFAULT）
+    pub fn disable_saved_default_mode(&mut self, fallback_index: u32) {
+        let _ = self.set_default_entry_by_index(fallback_index);
+        self.draft_config.remove("GRUB_SAVEDEFAULT");
+    }
+
+    /// 检查是否开启了 GRUB_SAVEDEFAULT=true（记忆上次启动选择）
+    pub fn is_save_default_enabled(&self) -> bool {
+        self.draft_config.get("GRUB_SAVEDEFAULT") == Some("true")
+    }
+
+    /// 设置 GRUB_SAVEDEFAULT 开关；开启时确保 GRUB_DEFAULT=saved
+    pub fn set_save_default_enabled(&mut self, enabled: bool) {
+        if enabled {
+            let _ = cfg_set_default_entry(&mut self.draft_config, &DefaultEntry::Saved);
+            self.draft_config.set("GRUB_SAVEDEFAULT", "true");
+        } else {
+            self.draft_config.remove("GRUB_SAVEDEFAULT");
+        }
     }
 
     /// 设置倒计时秒数（-1 表示无限等待）

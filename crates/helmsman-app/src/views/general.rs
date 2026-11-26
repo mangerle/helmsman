@@ -13,6 +13,7 @@ use grub_config_parser::well_known_flags;
 /// 渲染“常规引导设置”页面（集中管理默认启动项、菜单可见性与倒计时、内核参数）
 pub fn render_general(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> impl IntoElement {
     let has_saved_default = win.state.is_saved_default_enabled();
+    let has_save_default_flag = win.state.is_save_default_enabled();
     let timeout = win.state.get_timeout();
     let cmdline_default = win.state.get_cmdline_default();
     let has_quiet = cmdline_default.split_whitespace().any(|t| t == "quiet");
@@ -48,10 +49,30 @@ pub fn render_general(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) ->
                                 this.toast =
                                     Some((true, "已切换为“记忆上一个启动项”模式".to_string()));
                             } else {
-                                let _ = this.state.set_default_entry_by_index(0);
+                                this.state.disable_saved_default_mode(0);
                                 this.toast =
                                     Some((true, "已切换为“预定义默认项 (0)”模式".to_string()));
                             }
+                            cx.notify();
+                        })),
+                    cx,
+                ))
+                .child(setting_row(
+                    "自动保存上次选择 (GRUB_SAVEDEFAULT)",
+                    "每次开机手动选择条目后自动更新 grubenv 记忆（需配合 GRUB_DEFAULT=saved）",
+                    Switch::new("sw-general-save-default-flag")
+                        .checked(has_save_default_flag)
+                        .on_click(cx.listener(|this, checked, _, cx| {
+                            this.state.set_save_default_enabled(*checked);
+                            this.toast = Some((
+                                true,
+                                if *checked {
+                                    "已开启 GRUB_SAVEDEFAULT=true 并联动 GRUB_DEFAULT=saved"
+                                } else {
+                                    "已关闭 GRUB_SAVEDEFAULT 自动保存"
+                                }
+                                .to_string(),
+                            ));
                             cx.notify();
                         })),
                     cx,
