@@ -166,13 +166,14 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          ROOT_DIR="$(pwd)"
           mkdir -p dist
           DEB="$(find target -path '*/debian/*.deb' -type f | head -n 1)"
           if [ -z "$DEB" ]; then echo "::error::未找到 DEB 产物"; exit 1; fi
           cp "$DEB" "dist/helmsman_${VERSION}_linux_${ARCH}.deb"
           tar -czf "dist/helmsman-daemon_${VERSION}_linux_${ARCH}.tar.gz" \
-            -C "target/${TARGET}/release" helmsman-daemon \
-            -C "../../../../crates/helmsman-daemon/data" \
+            -C "${ROOT_DIR}/target/${TARGET}/release" helmsman-daemon \
+            -C "${ROOT_DIR}/crates/helmsman-daemon/data" \
             org.freedesktop.Helmsman.policy org.freedesktop.Helmsman.service helmsman.service
           ls -lh dist
 
