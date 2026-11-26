@@ -43,6 +43,22 @@ const ALLOWED_PROGRAMS: &[&str] = &[
     "/usr/sbin/grub-set-default",
     "/usr/bin/grub2-set-default",
     "/usr/sbin/grub2-set-default",
+    "/usr/bin/fc-list",
+    "/bin/fc-list",
+    "/usr/bin/grub-mkfont",
+    "/usr/sbin/grub-mkfont",
+    "/usr/bin/grub2-mkfont",
+    "/usr/sbin/grub2-mkfont",
+    "/usr/bin/lsblk",
+    "/bin/lsblk",
+    "/usr/sbin/grub-install",
+    "/usr/bin/grub-install",
+    "/sbin/grub-install",
+    "/usr/sbin/grub2-install",
+    "/usr/bin/grub2-install",
+    "/usr/sbin/chroot",
+    "/usr/bin/chroot",
+    "/bin/chroot",
 ];
 
 /// 仅在 `test-support` 下编译的测试模拟程序白名单

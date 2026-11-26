@@ -23,6 +23,14 @@ pub enum AuditAction {
     DeleteSnapshot,
     /// 导出快照
     ExportSnapshot,
+    /// 转换 GRUB 字体
+    ConvertFont,
+    /// 切换 /etc/grub.d/ 脚本启用状态
+    ToggleGrubScript,
+    /// 重装 GRUB 引导程序
+    ReinstallGrub,
+    /// 切换目标挂载根目录
+    SwitchTargetRoot,
 }
 
 impl std::fmt::Display for AuditAction {
@@ -37,6 +45,10 @@ impl std::fmt::Display for AuditAction {
             AuditAction::RemoveTheme => write!(f, "卸载主题"),
             AuditAction::DeleteSnapshot => write!(f, "删除快照"),
             AuditAction::ExportSnapshot => write!(f, "导出快照"),
+            AuditAction::ConvertFont => write!(f, "转换 GRUB 字体"),
+            AuditAction::ToggleGrubScript => write!(f, "切换原生引导脚本启用状态"),
+            AuditAction::ReinstallGrub => write!(f, "重装 GRUB 引导程序"),
+            AuditAction::SwitchTargetRoot => write!(f, "切换目标挂载根目录"),
         }
     }
 }

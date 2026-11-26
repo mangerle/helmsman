@@ -1,6 +1,7 @@
 mod app;
 mod backend;
 mod entry_actions;
+mod system_actions;
 mod theme_actions;
 mod update_actions;
 mod views;

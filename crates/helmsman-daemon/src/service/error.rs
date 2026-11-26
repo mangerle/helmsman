@@ -89,6 +89,14 @@ pub enum DaemonError {
         /// 校验失败原因
         reason: String,
     },
+    /// 系统工具或救援操作失败（字体转换、脚本管理、重装引导或环境切换）
+    #[error("系统工具执行失败 [{operation}]，原因: {reason}")]
+    SystemToolFailed {
+        /// 操作名称
+        operation: String,
+        /// 失败原因
+        reason: String,
+    },
     /// 条目显示别名非法
     #[error("条目显示别名非法，条目: '{entry_id}'，原因: {reason}")]
     InvalidAlias {

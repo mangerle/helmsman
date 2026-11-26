@@ -99,6 +99,9 @@ impl From<DaemonError> for HelmsmanDbusError {
             DaemonError::InvalidAlias { entry_id, reason } => HelmsmanDbusError::InvalidArgs(
                 format!("条目显示别名非法，条目: '{entry_id}'，原因: {reason}"),
             ),
+            DaemonError::SystemToolFailed { operation, reason } => {
+                HelmsmanDbusError::Failed(format!("系统工具执行失败 [{operation}]，原因: {reason}"))
+            }
         }
     }
 }

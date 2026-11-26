@@ -35,6 +35,7 @@ pub fn render_appearance(
             cx,
         ))
         .child(render_resolution_and_colors_section(win, cx))
+        .child(render_font_section(win, cx))
         .child(render_themes_section(win, cx))
         .child(render_online_themes_section(win, cx))
 }
@@ -167,6 +168,79 @@ fn render_resolution_and_colors_section(
                 )),
             cx,
         ))
+}
+
+fn render_font_section(win: &HelmsmanWindow, cx: &mut Context<HelmsmanWindow>) -> impl IntoElement {
+    let current_font = win
+        .state
+        .get_grub_font_path()
+        .unwrap_or("未指定（使用默认字体）");
+
+    section_card("引导菜单字体 (GRUB_FONT / grub-mkfont)", cx)
+        .child(kv_row("当前 GRUB_FONT", current_font, cx))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .flex_1()
+                        .child(Input::new(&win.extra_inputs.font_src_input).small()),
+                )
+                .child(
+                    div()
+                        .w(px(72.0))
+                        .child(Input::new(&win.extra_inputs.font_size_input).small()),
+                )
+                .child(
+                    div()
+                        .w(px(140.0))
+                        .child(Input::new(&win.extra_inputs.font_out_input).small()),
+                )
+                .child(
+                    Button::new("btn-convert-grub-font")
+                        .primary()
+                        .small()
+                        .label("转换并应用 (.pf2)")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.convert_grub_font_action(cx);
+                        })),
+                )
+                .child(
+                    Button::new("btn-clear-grub-font")
+                        .ghost()
+                        .small()
+                        .label("清除")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let _ = this.state.set_grub_font_path(None);
+                            cx.notify();
+                        })),
+                ),
+        )
+        .child(
+            div().flex().flex_wrap().gap_1p5().children(
+                win.backend
+                    .system_fonts
+                    .iter()
+                    .take(12)
+                    .enumerate()
+                    .map(|(idx, f)| {
+                        let path = f.file_path.clone();
+                        let label = format!("{} ({})", f.family, f.style);
+                        Button::new(("btn-pick-sys-font", idx))
+                            .outline()
+                            .xsmall()
+                            .label(label)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.extra_inputs
+                                    .font_src_input
+                                    .update(cx, |s, cx| s.set_value(&path, window, cx));
+                                cx.notify();
+                            }))
+                    }),
+            ),
+        )
 }
 
 fn render_themes_section(

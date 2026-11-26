@@ -1,5 +1,6 @@
 use crate::types::{
-    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto,
+    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemFontDto, SystemStatusDto,
+    ThemeInfoDto,
 };
 use std::collections::HashMap;
 
@@ -98,4 +99,15 @@ pub trait HelmsmanApi {
 
     /// 提交全量菜单布局编排修改
     fn apply_menu_layout(&self, layout_json: &str, reason: &str) -> zbus::Result<ApplyResultDto>;
+
+    /// 列出宿主机可用的系统字体（用于生成 GRUB .pf2 字体）
+    fn list_system_fonts(&self) -> zbus::Result<Vec<SystemFontDto>>;
+
+    /// 调用 grub-mkfont 将系统字体转换为 .pf2 并返回目标路径
+    fn convert_grub_font(
+        &self,
+        src_path: &str,
+        font_size: u16,
+        output_name: &str,
+    ) -> zbus::Result<String>;
 }

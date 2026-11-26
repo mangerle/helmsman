@@ -2,12 +2,12 @@ use crate::audit::resolve_caller_uid_from_bus;
 use crate::custom_manager::CustomManager;
 use crate::dbus_api::error::HelmsmanDbusError;
 use crate::dbus_api::{
-    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemStatusDto, ThemeInfoDto,
-    polkit_actions,
+    ApplyResultDto, CustomBootEntryDto, DiffResultDto, SnapshotDto, SystemFontDto, SystemStatusDto,
+    ThemeInfoDto, polkit_actions,
 };
 use crate::idle::IdleWatcher;
 use crate::polkit::check_polkit_authorization;
-use crate::service::{DaemonError, GrubService, TransactionOptions, TransactionResult};
+use crate::service::{ConvertFontParams, DaemonError, GrubService, TransactionOptions, TransactionResult};
 use grub_transaction_engine::DiffReport;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -171,10 +171,14 @@ impl HelmsmanDbusAdapter {
             firmware_type: format!("{:?}", profile.firmware),
             config_path: self
                 .service
-                .default_config_path
+                .effective_default_config_path()
                 .to_string_lossy()
                 .into_owned(),
-            target_boot_path: profile.config_path.clone(),
+            target_boot_path: self
+                .service
+                .effective_boot_cfg_path()
+                .to_string_lossy()
+                .into_owned(),
             update_command: profile.update_command.clone(),
         })
     }
@@ -187,7 +191,7 @@ impl HelmsmanDbusAdapter {
     ) -> Result<String, HelmsmanDbusError> {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
-        let path = self.service.default_config_path.clone();
+        let path = self.service.effective_default_config_path();
         spawn_service_task("配置读取任务", move || {
             std::fs::read_to_string(&path).map_err(|e| DaemonError::ConfigReadFailed {
                 path,
@@ -208,11 +212,12 @@ impl HelmsmanDbusAdapter {
     ) -> Result<String, HelmsmanDbusError> {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
-        let boot_cfg_path = self.service.distro_profile.config_path.clone();
+        let boot_cfg_path = self.service.effective_boot_cfg_path();
         spawn_service_task("引导菜单读取任务", move || {
             std::fs::read_to_string(&boot_cfg_path).map_err(|e| {
                 HelmsmanDbusError::Failed(format!(
-                    "读取引导菜单失败，路径: {boot_cfg_path}，原因: {e}"
+                    "读取引导菜单失败，路径: {}，原因: {e}",
+                    boot_cfg_path.display()
                 ))
             })
         })
@@ -642,5 +647,45 @@ impl HelmsmanDbusAdapter {
         })
         .await?;
         Ok(to_apply_dto(result))
+    }
+
+    /// 列出宿主机可用系统字体（用于转换 GRUB .pf2 字体）
+    pub async fn list_system_fonts(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<Vec<SystemFontDto>, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        let service = Arc::clone(&self.service);
+        spawn_service_task("系统字体扫描任务", move || {
+            service.list_system_fonts()
+        })
+        .await
+    }
+
+    /// 调用 grub-mkfont 将系统字体转换为 GRUB .pf2 字体
+    pub async fn convert_grub_font(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        src_path: &str,
+        font_size: u16,
+        output_name: &str,
+    ) -> Result<String, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_APPLY_CHANGES)
+            .await?;
+        let service = Arc::clone(&self.service);
+        let params = ConvertFontParams {
+            src_path: src_path.to_string(),
+            font_size,
+            output_name: output_name.to_string(),
+        };
+        spawn_service_task("GRUB 字体转换任务", move || {
+            service.convert_grub_font_as(&params, caller_uid)
+        })
+        .await
     }
 }

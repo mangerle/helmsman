@@ -150,6 +150,19 @@ impl AppState {
         self.draft_config.get("GRUB_BACKGROUND")
     }
 
+    /// 设置 GRUB 引导菜单字体路径（`GRUB_FONT`）
+    ///
+    /// # Errors
+    /// 当路径含危险字符时返回 [`DisplayConfigError`]。
+    pub fn set_grub_font_path(&mut self, path: Option<&str>) -> Result<(), DisplayConfigError> {
+        display_keys::set_font(&mut self.draft_config, path)
+    }
+
+    /// 获取当前配置的 GRUB 引导菜单字体路径
+    pub fn get_grub_font_path(&self) -> Option<&str> {
+        self.draft_config.get("GRUB_FONT")
+    }
+
     /// 设置 GRUB 终端控制台文本前景色与背景色
     ///
     /// # Errors

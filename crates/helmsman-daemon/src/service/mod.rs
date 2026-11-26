@@ -2,9 +2,11 @@ mod apply;
 pub(crate) mod apply_support;
 mod error;
 mod ops;
+mod sys_tools;
 mod theme_ops;
 
 pub use error::DaemonError;
+pub use sys_tools::ConvertFontParams;
 
 use grub_distro_adapter::DistroProfile;
 use grub_transaction_engine::{
@@ -63,6 +65,8 @@ pub struct GrubService {
     pub menu_layout_path: PathBuf,
     /// 进程内写操作互斥锁（串行化磁盘写入、快照与引导重建，防止并发竞态）
     write_lock: Mutex<()>,
+    /// 当前管理的目标系统根目录（默认 "/"，可切换至外部挂载点离线修复）
+    target_root: Mutex<PathBuf>,
 }
 
 impl GrubService {
@@ -85,6 +89,7 @@ impl GrubService {
             themes_dir,
             menu_layout_path: PathBuf::from("/etc/helmsman/menu_layout.json"),
             write_lock: Mutex::new(()),
+            target_root: Mutex::new(PathBuf::from("/")),
         }
     }
 
@@ -104,6 +109,7 @@ impl GrubService {
             themes_dir,
             menu_layout_path,
             write_lock: Mutex::new(()),
+            target_root: Mutex::new(PathBuf::from("/")),
         }
     }
 
@@ -124,12 +130,56 @@ impl GrubService {
     /// # Errors
     /// 当目标配置文件不存在或无法读取时返回 [`DaemonError::ConfigReadFailed`]。
     pub fn preview_diff(&self, new_config: &str) -> Result<DiffReport, DaemonError> {
-        let original = fs::read_to_string(&self.default_config_path).map_err(|e| {
-            DaemonError::ConfigReadFailed {
-                path: self.default_config_path.clone(),
+        let cfg_path = self.effective_default_config_path();
+        let original =
+            fs::read_to_string(&cfg_path).map_err(|e| DaemonError::ConfigReadFailed {
+                path: cfg_path,
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
         Ok(generate_unified_diff(&original, new_config))
+    }
+
+    /// 获取当前生效的目标系统根目录
+    pub fn effective_root(&self) -> PathBuf {
+        self.target_root
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    /// 是否处于非宿主机根路径的外部挂载修复模式
+    pub fn is_external_root(&self) -> bool {
+        self.effective_root() != std::path::Path::new("/")
+    }
+
+    /// 获取当前生效的 `/etc/default/grub` 路径
+    pub fn effective_default_config_path(&self) -> PathBuf {
+        let root = self.effective_root();
+        if root == std::path::Path::new("/") {
+            self.default_config_path.clone()
+        } else {
+            root.join("etc/default/grub")
+        }
+    }
+
+    /// 获取当前生效的 `/etc/grub.d` 目录路径
+    pub fn effective_grub_d_dir(&self) -> PathBuf {
+        let root = self.effective_root();
+        if root == std::path::Path::new("/") {
+            PathBuf::from("/etc/grub.d")
+        } else {
+            root.join("etc/grub.d")
+        }
+    }
+
+    /// 获取当前生效的 `grub.cfg` 路径
+    pub fn effective_boot_cfg_path(&self) -> PathBuf {
+        let root = self.effective_root();
+        let rel = self.distro_profile.config_path.trim_start_matches('/');
+        if root == std::path::Path::new("/") {
+            PathBuf::from(&self.distro_profile.config_path)
+        } else {
+            root.join(rel)
+        }
     }
 }

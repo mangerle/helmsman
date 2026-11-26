@@ -37,6 +37,17 @@ impl std::fmt::Display for SystemStatusDto {
     }
 }
 
+/// 系统字体摘要 DTO（供转换 GRUB `.pf2` 字体选择）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct SystemFontDto {
+    /// 字体家族名称
+    pub family: String,
+    /// 字体字重/样式
+    pub style: String,
+    /// 字体文件绝对路径（.ttf / .otf / .ttc）
+    pub file_path: String,
+}
+
 /// 历史快照 DTO
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct SnapshotDto {

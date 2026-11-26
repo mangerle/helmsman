@@ -314,6 +314,23 @@ pub mod keys {
         Ok(())
     }
 
+    /// 写入 GRUB 字体路径（`GRUB_FONT`）；`None` 表示移除
+    pub fn set_font(
+        config: &mut GrubConfigFile,
+        path: Option<&str>,
+    ) -> Result<(), DisplayConfigError> {
+        match path.map(str::trim) {
+            Some(p) if !p.is_empty() => {
+                validate_display_path(p)?;
+                config.set("GRUB_FONT", p);
+            }
+            _ => {
+                config.remove("GRUB_FONT");
+            }
+        }
+        Ok(())
+    }
+
     /// 写入终端颜色对；`None` 表示移除
     pub fn set_colors(
         config: &mut GrubConfigFile,

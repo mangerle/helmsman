@@ -16,6 +16,18 @@ pub struct ExtraFormInputs {
     pub custom_cmdline_input: Entity<InputState>,
     /// 自定义条目子菜单名称输入框（留空表示主菜单根层级）
     pub custom_submenu_input: Entity<InputState>,
+    /// 源系统字体路径输入框（供 grub-mkfont 转换）
+    pub font_src_input: Entity<InputState>,
+    /// 目标字体字号输入框（默认 16）
+    pub font_size_input: Entity<InputState>,
+    /// 输出 `.pf2` 字体文件名输入框
+    pub font_out_input: Entity<InputState>,
+    /// 外部挂载根目录输入框（默认 "/"）
+    pub target_root_input: Entity<InputState>,
+    /// BIOS / MBR 重装目标磁盘路径输入框
+    pub install_device_input: Entity<InputState>,
+    /// UEFI 重装 EFI 系统分区挂载目录输入框
+    pub install_efi_input: Entity<InputState>,
 }
 
 impl ExtraFormInputs {
@@ -36,6 +48,32 @@ impl ExtraFormInputs {
         let custom_submenu_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("子菜单名称（留空则置于主菜单根层级）")
         });
+        let font_src_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("/usr/share/fonts/.../*.ttf 或点击下方字体")
+        });
+        let font_size_input = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder("16");
+            s.set_value("16", window, cx);
+            s
+        });
+        let font_out_input = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder("helmsman-font");
+            s.set_value("helmsman-font", window, cx);
+            s
+        });
+        let target_root_input = cx.new(|cx| {
+            let mut s =
+                InputState::new(window, cx).placeholder("/mnt/sysroot（留空或 / 为宿主机）");
+            s.set_value("/", window, cx);
+            s
+        });
+        let install_device_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("/dev/sda 或 /dev/nvme0n1"));
+        let install_efi_input = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder("/boot/efi");
+            s.set_value("/boot/efi", window, cx);
+            s
+        });
 
         let this = Self {
             env_key_input,
@@ -44,6 +82,12 @@ impl ExtraFormInputs {
             custom_uuid_input,
             custom_cmdline_input,
             custom_submenu_input,
+            font_src_input,
+            font_size_input,
+            font_out_input,
+            target_root_input,
+            install_device_input,
+            install_efi_input,
         };
         this.sync_selected_custom(initial_custom, window, cx);
         this

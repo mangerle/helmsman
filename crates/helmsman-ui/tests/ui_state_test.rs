@@ -267,3 +267,32 @@ fn test_app_state_custom_entries_and_aliases() {
     assert!(state.remove_custom_entry("iso_live"));
     assert!(!state.has_custom_entry_changes());
 }
+
+#[test]
+fn test_save_default_contract() {
+    let mut state = AppState::new_from_content(SAMPLE_DEFAULT_GRUB, SAMPLE_GRUB_CFG);
+    assert!(!state.is_save_default_enabled());
+
+    state.set_save_default_enabled(true);
+    assert!(state.is_saved_default_enabled());
+    assert!(state.is_save_default_enabled());
+
+    state.disable_saved_default_mode(0);
+    assert!(!state.is_saved_default_enabled());
+    assert!(!state.is_save_default_enabled());
+}
+
+#[test]
+fn test_grub_font_contract() {
+    let mut state = AppState::new_from_content(SAMPLE_DEFAULT_GRUB, SAMPLE_GRUB_CFG);
+    state
+        .set_grub_font_path(Some("/boot/grub/fonts/noto-16.pf2"))
+        .unwrap();
+    assert_eq!(
+        state.get_grub_font_path(),
+        Some("/boot/grub/fonts/noto-16.pf2")
+    );
+    assert!(state.set_grub_font_path(Some("/bad;rm -rf /")).is_err());
+    state.set_grub_font_path(None).unwrap();
+    assert_eq!(state.get_grub_font_path(), None);
+}

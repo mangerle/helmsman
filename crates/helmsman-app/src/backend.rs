@@ -1,7 +1,7 @@
 use grub_boot_reader::{CustomBootEntry, MenuLayout};
 use helmsman_client::{
-    ApplyResultDto, CustomBootEntryDto, HelmsmanApiProxyBlocking, SnapshotDto, SystemStatusDto,
-    ThemeInfoDto,
+    ApplyResultDto, CustomBootEntryDto, HelmsmanApiProxyBlocking, SnapshotDto, SystemFontDto,
+    SystemStatusDto, ThemeInfoDto,
 };
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -72,6 +72,8 @@ pub struct BackendSnapshot {
     pub menu_layout: MenuLayout,
     /// 条目友好别名映射
     pub aliases: HashMap<String, String>,
+    /// 系统可用字体列表
+    pub system_fonts: Vec<SystemFontDto>,
     /// 是否处于未连接守护进程的离线演示模式
     pub is_demo_mode: bool,
     /// 顶部连接状态说明
@@ -136,6 +138,11 @@ menuentry 'Windows Boot Manager (on /dev/nvme0n1p1)' --class windows --id 'ospro
             custom_entries: Vec::new(),
             menu_layout: MenuLayout::default(),
             aliases: HashMap::new(),
+            system_fonts: vec![SystemFontDto {
+                family: "Noto Sans CJK SC".to_string(),
+                style: "Regular".to_string(),
+                file_path: "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc".to_string(),
+            }],
             is_demo_mode: true,
             status_note: format!("演示模式（未连接守护进程: {reason}）"),
         }
@@ -173,6 +180,7 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         .ok()
         .and_then(|raw| serde_json::from_str::<MenuLayout>(&raw).ok())
         .unwrap_or_default();
+    let system_fonts = proxy.list_system_fonts().unwrap_or_default();
     let status_note = format!(
         "已连接 · {} ({:?})",
         system_status.distro_name, system_status.firmware_type
@@ -187,6 +195,7 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         custom_entries,
         menu_layout,
         aliases,
+        system_fonts,
         is_demo_mode: false,
         status_note,
     })
@@ -267,6 +276,18 @@ pub fn set_entry_alias(entry_id: &str, alias: &str) -> Result<(), String> {
     proxy
         .set_entry_alias(entry_id, alias)
         .map_err(|e| format!("设置引导项别名失败: {e}"))
+}
+
+/// 调用特权服务将系统字体转换为 GRUB `.pf2` 字体
+pub fn convert_grub_font(
+    src_path: &str,
+    font_size: u16,
+    output_name: &str,
+) -> Result<String, String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .convert_grub_font(src_path, font_size, output_name)
+        .map_err(|e| format!("转换 GRUB 字体失败: {e}"))
 }
 
 /// 临时下载文件 RAII 守卫，确保退出作用域时自动删除临时压缩包
