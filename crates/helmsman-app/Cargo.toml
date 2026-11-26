@@ -36,8 +36,3 @@ assets = [
     ["../../packaging/linux/helmsman.desktop", "usr/share/applications/helmsman.desktop", "644"],
     ["../../assets/logo.svg", "usr/share/icons/hicolor/scalable/apps/helmsman.svg", "644"],
 ]
-
-[package.metadata.packager]
-name = "Helmsman"
-identifier = "org.freedesktop.Helmsman"
-icons = ["../../assets/logo.svg"]
