@@ -1,6 +1,6 @@
 use crate::types::{
-    ApplyResultDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto, SystemFontDto,
-    SystemStatusDto, ThemeInfoDto,
+    ApplyResultDto, BlockDeviceDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto,
+    SystemFontDto, SystemStatusDto, ThemeInfoDto,
 };
 use std::collections::HashMap;
 
@@ -116,4 +116,15 @@ pub trait HelmsmanApi {
 
     /// 启用或禁用指定 /etc/grub.d/ 原生引导脚本（修改可执行位）
     fn set_grub_script_enabled(&self, script_name: &str, enabled: bool) -> zbus::Result<()>;
+
+    /// 列出系统块设备与分区列表（供重装引导选择目标）
+    fn list_block_devices(&self) -> zbus::Result<Vec<BlockDeviceDto>>;
+
+    /// 重装 GRUB 引导程序至指定 MBR 磁盘或 UEFI 分区
+    fn reinstall_grub(
+        &self,
+        mode: &str,
+        device_path: &str,
+        efi_directory: &str,
+    ) -> zbus::Result<String>;
 }

@@ -2,12 +2,15 @@ use crate::audit::resolve_caller_uid_from_bus;
 use crate::custom_manager::CustomManager;
 use crate::dbus_api::error::HelmsmanDbusError;
 use crate::dbus_api::{
-    ApplyResultDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto, SystemFontDto,
-    SystemStatusDto, ThemeInfoDto, polkit_actions,
+    ApplyResultDto, BlockDeviceDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto,
+    SystemFontDto, SystemStatusDto, ThemeInfoDto, polkit_actions,
 };
 use crate::idle::IdleWatcher;
 use crate::polkit::check_polkit_authorization;
-use crate::service::{ConvertFontParams, DaemonError, GrubService, TransactionOptions, TransactionResult};
+use crate::service::{
+    ConvertFontParams, DaemonError, GrubInstallMode, GrubService, ReinstallGrubParams,
+    TransactionOptions, TransactionResult,
+};
 use grub_transaction_engine::DiffReport;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -720,6 +723,44 @@ impl HelmsmanDbusAdapter {
         let name = script_name.to_string();
         spawn_service_task("引导脚本权限变更任务", move || {
             service.set_grub_script_enabled_as(&name, enabled, caller_uid)
+        })
+        .await
+    }
+
+    /// 列出系统块设备与分区列表
+    pub async fn list_block_devices(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> Result<Vec<BlockDeviceDto>, HelmsmanDbusError> {
+        self.idle_watcher.touch();
+        self.verify_polkit_read(header, connection).await?;
+        let service = Arc::clone(&self.service);
+        spawn_service_task("块设备扫描任务", move || service.list_block_devices()).await
+    }
+
+    /// 重装 GRUB 引导程序至 MBR 磁盘或 UEFI ESP 分区
+    pub async fn reinstall_grub(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        mode: &str,
+        device_path: &str,
+        efi_directory: &str,
+    ) -> Result<String, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_REINSTALL_GRUB)
+            .await?;
+        let parsed_mode = GrubInstallMode::parse(mode)?;
+        let service = Arc::clone(&self.service);
+        let params = ReinstallGrubParams {
+            mode: parsed_mode,
+            device_path: device_path.to_string(),
+            efi_directory: efi_directory.to_string(),
+        };
+        spawn_service_task("GRUB 重装引导任务", move || {
+            service.reinstall_grub_as(&params, caller_uid)
         })
         .await
     }

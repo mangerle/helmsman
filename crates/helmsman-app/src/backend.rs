@@ -1,7 +1,7 @@
 use grub_boot_reader::{CustomBootEntry, MenuLayout};
 use helmsman_client::{
-    ApplyResultDto, CustomBootEntryDto, GrubScriptDto, HelmsmanApiProxyBlocking, SnapshotDto,
-    SystemFontDto, SystemStatusDto, ThemeInfoDto,
+    ApplyResultDto, BlockDeviceDto, CustomBootEntryDto, GrubScriptDto, HelmsmanApiProxyBlocking,
+    SnapshotDto, SystemFontDto, SystemStatusDto, ThemeInfoDto,
 };
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -76,6 +76,8 @@ pub struct BackendSnapshot {
     pub system_fonts: Vec<SystemFontDto>,
     /// `/etc/grub.d/` 原生引导脚本列表
     pub grub_scripts: Vec<GrubScriptDto>,
+    /// 系统块设备与分区列表
+    pub block_devices: Vec<BlockDeviceDto>,
     /// 是否处于未连接守护进程的离线演示模式
     pub is_demo_mode: bool,
     /// 顶部连接状态说明
@@ -175,6 +177,26 @@ menuentry 'Windows Boot Manager (on /dev/nvme0n1p1)' --class windows --id 'ospro
                     content: "#!/bin/sh\nexec tail -n +3 $0\n".to_string(),
                 },
             ],
+            block_devices: vec![
+                BlockDeviceDto {
+                    name: "nvme0n1".to_string(),
+                    path: "/dev/nvme0n1".to_string(),
+                    size: "512G".to_string(),
+                    device_type: "disk".to_string(),
+                    mountpoint: String::new(),
+                    fstype: String::new(),
+                    model: "演示 NVMe SSD".to_string(),
+                },
+                BlockDeviceDto {
+                    name: "nvme0n1p1".to_string(),
+                    path: "/dev/nvme0n1p1".to_string(),
+                    size: "512M".to_string(),
+                    device_type: "part".to_string(),
+                    mountpoint: "/boot/efi".to_string(),
+                    fstype: "vfat".to_string(),
+                    model: String::new(),
+                },
+            ],
             is_demo_mode: true,
             status_note: format!("演示模式（未连接守护进程: {reason}）"),
         }
@@ -214,6 +236,7 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         .unwrap_or_default();
     let system_fonts = proxy.list_system_fonts().unwrap_or_default();
     let grub_scripts = proxy.list_grub_scripts().unwrap_or_default();
+    let block_devices = proxy.list_block_devices().unwrap_or_default();
     let status_note = format!(
         "已连接 · {} ({:?})",
         system_status.distro_name, system_status.firmware_type
@@ -230,6 +253,7 @@ fn try_load_from_dbus() -> Result<BackendSnapshot, String> {
         aliases,
         system_fonts,
         grub_scripts,
+        block_devices,
         is_demo_mode: false,
         status_note,
     })
@@ -338,6 +362,18 @@ pub fn set_grub_script_enabled(script_name: &str, enabled: bool) -> Result<(), S
     proxy
         .set_grub_script_enabled(script_name, enabled)
         .map_err(|e| format!("修改脚本启用状态失败: {e}"))
+}
+
+/// 重装 GRUB 引导程序至指定磁盘或 EFI 分区
+pub fn reinstall_grub(
+    mode: &str,
+    device_path: &str,
+    efi_directory: &str,
+) -> Result<String, String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .reinstall_grub(mode, device_path, efi_directory)
+        .map_err(|e| format!("重装 GRUB 引导失败: {e}"))
 }
 
 /// 临时下载文件 RAII 守卫，确保退出作用域时自动删除临时压缩包

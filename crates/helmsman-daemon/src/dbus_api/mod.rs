@@ -9,8 +9,8 @@ pub use adapter::{
 pub use constants::{DBUS_INTERFACE_V1, DBUS_OBJECT_PATH, DBUS_SERVICE_NAME, polkit_actions};
 pub use error::HelmsmanDbusError;
 pub use helmsman_client::{
-    ApplyResultDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto, SystemFontDto,
-    SystemStatusDto, ThemeInfoDto,
+    ApplyResultDto, BlockDeviceDto, CustomBootEntryDto, DiffResultDto, GrubScriptDto, SnapshotDto,
+    SystemFontDto, SystemStatusDto, ThemeInfoDto,
 };
 
 #[cfg(test)]

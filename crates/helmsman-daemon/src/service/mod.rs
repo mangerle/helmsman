@@ -7,7 +7,7 @@ mod sys_tools;
 mod theme_ops;
 
 pub use error::DaemonError;
-pub use sys_tools::ConvertFontParams;
+pub use sys_tools::{ConvertFontParams, GrubInstallMode, ReinstallGrubParams};
 
 use grub_distro_adapter::DistroProfile;
 use grub_transaction_engine::{

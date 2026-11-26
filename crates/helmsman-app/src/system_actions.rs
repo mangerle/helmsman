@@ -113,4 +113,48 @@ impl HelmsmanWindow {
         }
         cx.notify();
     }
+
+    /// 执行 `grub-install` 重装引导程序到 MBR 或 EFI 分区
+    pub fn perform_reinstall_grub(&mut self, cx: &mut Context<Self>) {
+        let mode = if self.reinstall_mode_uefi {
+            "uefi"
+        } else {
+            "bios"
+        };
+        let device_path = self
+            .extra_inputs
+            .install_device_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        let efi_directory = self
+            .extra_inputs
+            .install_efi_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+
+        if self.backend.is_demo_mode {
+            self.toast = Some((true, format!("演示模式：已模拟执行 grub-install ({mode})")));
+            cx.notify();
+            return;
+        }
+
+        match backend::reinstall_grub(mode, &device_path, &efi_directory) {
+            Ok(msg) => {
+                let summary = if msg.trim().is_empty() {
+                    "GRUB 引导程序重装成功".to_string()
+                } else {
+                    format!("GRUB 引导程序重装完成: {msg}")
+                };
+                self.toast = Some((true, summary));
+            }
+            Err(e) => {
+                self.toast = Some((false, e));
+            }
+        }
+        cx.notify();
+    }
 }

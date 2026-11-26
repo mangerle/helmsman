@@ -1,15 +1,16 @@
 use crate::app::HelmsmanWindow;
-use crate::views::{page_header, scroll_page_container, section_card};
+use crate::views::{page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::label::Label;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tag::{Tag, TagVariant};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, StyledExt as _};
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, StyledExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-/// 渲染“系统救援与脚本”页面（当前包含 `/etc/grub.d/` 原生脚本管理）
+/// 渲染“系统救援与脚本”页面（`/etc/grub.d/` 脚本管理、`grub-install` 重装引导）
 pub fn render_system_tools(
     win: &HelmsmanWindow,
     cx: &mut Context<HelmsmanWindow>,
@@ -17,7 +18,7 @@ pub fn render_system_tools(
     scroll_page_container()
         .child(page_header(
             "系统救援与脚本管理",
-            "管理 /etc/grub.d/ 原生引导脚本启用状态与源码预览",
+            "管理 /etc/grub.d/ 原生脚本以及重装 GRUB 引导记录",
             Some(
                 Tag::new()
                     .with_variant(TagVariant::Warning)
@@ -28,6 +29,7 @@ pub fn render_system_tools(
             cx,
         ))
         .child(render_grub_scripts_section(win, cx))
+        .child(render_reinstall_grub_section(win, cx))
 }
 
 fn render_grub_scripts_section(
@@ -148,4 +150,108 @@ fn render_grub_scripts_section(
                     ),
             )
         })
+}
+
+fn render_reinstall_grub_section(
+    win: &HelmsmanWindow,
+    cx: &mut Context<HelmsmanWindow>,
+) -> impl IntoElement {
+    let is_uefi = win.reinstall_mode_uefi;
+
+    section_card("重装 GRUB 引导程序 (grub-install)", cx)
+        .child(
+            Label::new("警告：错误的磁盘设备或 EFI 分区路径可能导致系统无法引导，请核对下方块设备列表后再执行。")
+                .text_xs()
+                .text_color(cx.theme().danger),
+        )
+        .child(setting_row(
+            "引导安装模式",
+            "根据主板固件选择 UEFI（写入 ESP 分区）或传统 BIOS（写入磁盘 MBR）",
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child({
+                    let b = Button::new("btn-mode-uefi").xsmall().label("UEFI (ESP)");
+                    if is_uefi { b.primary() } else { b.outline() }.on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.reinstall_mode_uefi = true;
+                            cx.notify();
+                        },
+                    ))
+                })
+                .child({
+                    let b = Button::new("btn-mode-bios").xsmall().label("BIOS (MBR)");
+                    if !is_uefi { b.primary() } else { b.outline() }.on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.reinstall_mode_uefi = false;
+                            cx.notify();
+                        },
+                    ))
+                }),
+            cx,
+        ))
+        .child(if is_uefi {
+            setting_row(
+                "EFI 系统分区挂载目录 (--efi-directory)",
+                "通常为 /boot/efi，下方可点击已挂载的 vfat 分区快速填充",
+                div()
+                    .w(px(260.0))
+                    .child(Input::new(&win.extra_inputs.install_efi_input).small()),
+                cx,
+            )
+        } else {
+            setting_row(
+                "目标磁盘设备 (/dev/...)",
+                "请选择整块物理磁盘（如 /dev/sda），切勿填入分区编号",
+                div()
+                    .w(px(260.0))
+                    .child(Input::new(&win.extra_inputs.install_device_input).small()),
+                cx,
+            )
+        })
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap_1p5()
+                .children(win.backend.block_devices.iter().enumerate().map(|(idx, d)| {
+                    let dev_path = d.path.clone();
+                    let mount = d.mountpoint.clone();
+                    let is_efi_cand = d.device_type == "part" && !mount.is_empty();
+                    let label = if d.mountpoint.is_empty() {
+                        format!("{} ({}) {}", d.path, d.size, d.model)
+                    } else {
+                        format!("{} -> {} ({})", d.path, d.mountpoint, d.fstype)
+                    };
+                    Button::new(("btn-pick-dev", idx))
+                        .outline()
+                        .xsmall()
+                        .label(label)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if this.reinstall_mode_uefi && is_efi_cand {
+                                this.extra_inputs
+                                    .install_efi_input
+                                    .update(cx, |s, cx| s.set_value(&mount, window, cx));
+                            } else {
+                                this.extra_inputs
+                                    .install_device_input
+                                    .update(cx, |s, cx| s.set_value(&dev_path, window, cx));
+                            }
+                            cx.notify();
+                        }))
+                })),
+        )
+        .child(
+            div().flex().justify_end().pt_2().child(
+                Button::new("btn-exec-grub-install")
+                    .danger()
+                    .small()
+                    .icon(IconName::Check)
+                    .label("执行重装 GRUB 引导程序")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.perform_reinstall_grub(cx);
+                    })),
+            ),
+        )
 }

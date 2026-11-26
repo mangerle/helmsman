@@ -1,7 +1,8 @@
 use crate::audit::{AuditAction, with_audit};
 use crate::executor::SafeCommand;
 use crate::service::{DaemonError, GrubService};
-use helmsman_client::SystemFontDto;
+use helmsman_client::{BlockDeviceDto, SystemFontDto};
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,6 +11,8 @@ use tracing::info;
 
 /// 允许转换的字体文件扩展名白名单
 const ALLOWED_FONT_EXTS: &[&str] = &["ttf", "otf", "ttc"];
+/// `grub-install` 执行超时上限（秒）
+const GRUB_INSTALL_TIMEOUT_SECS: u64 = 120;
 
 /// 字体转换参数对象
 #[derive(Debug, Clone)]
@@ -20,6 +23,69 @@ pub struct ConvertFontParams {
     pub font_size: u16,
     /// 输出文件名（不含扩展名，自动输出至受控字体目录）
     pub output_name: String,
+}
+
+/// GRUB 引导程序重装模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrubInstallMode {
+    /// UEFI 模式（写入 ESP 分区）
+    Uefi,
+    /// 传统 BIOS / MBR 模式（写入磁盘主引导记录）
+    Bios,
+}
+
+impl GrubInstallMode {
+    /// 从前端契约字符串解析安装模式
+    ///
+    /// # Errors
+    /// 当模式不是 `uefi` 或 `bios` 时返回 [`DaemonError::SystemToolFailed`]。
+    pub fn parse(raw: &str) -> Result<Self, DaemonError> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "uefi" => Ok(Self::Uefi),
+            "bios" => Ok(Self::Bios),
+            other => Err(DaemonError::SystemToolFailed {
+                operation: "解析引导安装模式".to_string(),
+                reason: format!("不支持的模式 '{other}'，仅允许 uefi 或 bios"),
+            }),
+        }
+    }
+}
+
+/// GRUB 重装引导参数对象
+#[derive(Debug, Clone)]
+pub struct ReinstallGrubParams {
+    /// 安装模式（UEFI / BIOS）
+    pub mode: GrubInstallMode,
+    /// 目标磁盘或设备路径（如 `/dev/sda`）
+    pub device_path: String,
+    /// UEFI 模式下的 EFI 系统分区挂载目录（如 `/boot/efi`）
+    pub efi_directory: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LsblkRoot {
+    #[serde(default)]
+    blockdevices: Vec<LsblkNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LsblkNode {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    size: Option<String>,
+    #[serde(default, rename = "type")]
+    device_type: String,
+    #[serde(default)]
+    mountpoint: Option<String>,
+    #[serde(default)]
+    fstype: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    children: Vec<LsblkNode>,
 }
 
 /// 查找首个存在的系统命令绝对路径
@@ -76,6 +142,27 @@ fn validate_source_font_path(raw_path: &str) -> Result<PathBuf, DaemonError> {
         });
     }
     Ok(canon)
+}
+
+fn flatten_lsblk_nodes(nodes: &[LsblkNode], out: &mut Vec<BlockDeviceDto>) {
+    for node in nodes {
+        if node.device_type == "disk" || node.device_type == "part" {
+            let path = node
+                .path
+                .clone()
+                .unwrap_or_else(|| format!("/dev/{}", node.name));
+            out.push(BlockDeviceDto {
+                name: node.name.clone(),
+                path,
+                size: node.size.clone().unwrap_or_default(),
+                device_type: node.device_type.clone(),
+                mountpoint: node.mountpoint.clone().unwrap_or_default(),
+                fstype: node.fstype.clone().unwrap_or_default(),
+                model: node.model.as_deref().unwrap_or("").trim().to_string(),
+            });
+        }
+        flatten_lsblk_nodes(&node.children, out);
+    }
 }
 
 impl GrubService {
@@ -207,6 +294,134 @@ impl GrubService {
             },
         )
     }
+
+    /// 列出系统块设备与分区（调用 `lsblk -J`）
+    ///
+    /// # Errors
+    /// 当 `lsblk` 缺失或解析输出失败时返回 [`DaemonError::SystemToolFailed`]。
+    pub fn list_block_devices(&self) -> Result<Vec<BlockDeviceDto>, DaemonError> {
+        let lsblk = find_first_existing(&["/usr/bin/lsblk", "/bin/lsblk"]).ok_or_else(|| {
+            DaemonError::SystemToolFailed {
+                operation: "扫描块设备".to_string(),
+                reason: "未找到 /usr/bin/lsblk".to_string(),
+            }
+        })?;
+
+        let cmd = SafeCommand::new(lsblk)?.args([
+            "-J",
+            "-o",
+            "NAME,PATH,SIZE,TYPE,MOUNTPOINT,FSTYPE,MODEL",
+        ])?;
+        let output = cmd
+            .output_with_timeout(Duration::from_secs(10))
+            .map_err(|e| DaemonError::SystemToolFailed {
+                operation: "扫描块设备".to_string(),
+                reason: e.to_string(),
+            })?;
+
+        if !output.status.success() {
+            return Err(DaemonError::SystemToolFailed {
+                operation: "扫描块设备".to_string(),
+                reason: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            });
+        }
+
+        let root: LsblkRoot =
+            serde_json::from_slice(&output.stdout).map_err(|e| DaemonError::SystemToolFailed {
+                operation: "解析 lsblk 输出".to_string(),
+                reason: e.to_string(),
+            })?;
+        let mut devices = Vec::with_capacity(16);
+        flatten_lsblk_nodes(&root.blockdevices, &mut devices);
+        Ok(devices)
+    }
+
+    /// 重装 GRUB 引导程序至指定 MBR 磁盘或 UEFI ESP 分区
+    ///
+    /// # Errors
+    /// 当设备路径/参数非法或 `grub-install` 返回非零状态时返回 [`DaemonError::SystemToolFailed`]。
+    pub fn reinstall_grub_as(
+        &self,
+        params: &ReinstallGrubParams,
+        caller_uid: u32,
+    ) -> Result<String, DaemonError> {
+        let _write_guard = self.acquire_write_lock();
+        with_audit(
+            caller_uid,
+            AuditAction::ReinstallGrub,
+            format!("重装 GRUB ({:?}) -> {}", params.mode, params.device_path),
+            None,
+            None,
+            |_| (true, None),
+            || {
+                let installer = find_first_existing(&[
+                    "/usr/sbin/grub-install",
+                    "/usr/bin/grub-install",
+                    "/sbin/grub-install",
+                    "/usr/sbin/grub2-install",
+                    "/usr/bin/grub2-install",
+                ])
+                .ok_or_else(|| DaemonError::SystemToolFailed {
+                    operation: "重装 GRUB 引导".to_string(),
+                    reason: "未找到 grub-install / grub2-install 工具".to_string(),
+                })?;
+
+                let mut args: Vec<String> = Vec::new();
+                let root = self.effective_root();
+                if root != Path::new("/") {
+                    args.push(format!("--boot-directory={}", root.join("boot").display()));
+                }
+
+                match params.mode {
+                    GrubInstallMode::Uefi => {
+                        let efi_dir = params.efi_directory.trim();
+                        if efi_dir.is_empty() || !Path::new(efi_dir).is_dir() {
+                            return Err(DaemonError::SystemToolFailed {
+                                operation: "校验 EFI 目录".to_string(),
+                                reason: format!("EFI 挂载目录不存在或不是有效目录: '{efi_dir}'"),
+                            });
+                        }
+                        args.push(format!("--efi-directory={efi_dir}"));
+                        args.push("--recheck".to_string());
+                    }
+                    GrubInstallMode::Bios => {
+                        let dev = params.device_path.trim();
+                        if !dev.starts_with("/dev/") || !Path::new(dev).exists() {
+                            return Err(DaemonError::SystemToolFailed {
+                                operation: "校验目标磁盘".to_string(),
+                                reason: format!(
+                                    "BIOS 模式必须指定合法的 /dev/ 磁盘设备，当前为 '{dev}'"
+                                ),
+                            });
+                        }
+                        args.push("--recheck".to_string());
+                        args.push(dev.to_string());
+                    }
+                }
+
+                let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                let cmd = SafeCommand::new(installer)?.args(&arg_refs)?;
+                let output = cmd
+                    .output_with_timeout(Duration::from_secs(GRUB_INSTALL_TIMEOUT_SECS))
+                    .map_err(|e| DaemonError::SystemToolFailed {
+                        operation: "执行 grub-install".to_string(),
+                        reason: e.to_string(),
+                    })?;
+
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                if !output.status.success() {
+                    return Err(DaemonError::SystemToolFailed {
+                        operation: "执行 grub-install".to_string(),
+                        reason: format!("退出码 {:?}: {stderr}", output.status.code()),
+                    });
+                }
+
+                info!("GRUB 引导程序重装完成 ({:?})", params.mode);
+                Ok(if stdout.is_empty() { stderr } else { stdout })
+            },
+        )
+    }
 }
 
 #[cfg(test)]
@@ -226,5 +441,18 @@ mod tests {
         assert!(sanitize_font_output_name("../evil").is_err());
         assert!(sanitize_font_output_name("bad name").is_err());
         assert!(sanitize_font_output_name("").is_err());
+    }
+
+    #[test]
+    fn test_install_mode_parse() {
+        assert_eq!(
+            GrubInstallMode::parse("uefi").unwrap(),
+            GrubInstallMode::Uefi
+        );
+        assert_eq!(
+            GrubInstallMode::parse("BIOS").unwrap(),
+            GrubInstallMode::Bios
+        );
+        assert!(GrubInstallMode::parse("invalid").is_err());
     }
 }

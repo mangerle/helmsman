@@ -63,6 +63,25 @@ pub struct GrubScriptDto {
     pub content: String,
 }
 
+/// 宿主机块设备 / 分区 DTO（供重装 GRUB 引导选择目标）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct BlockDeviceDto {
+    /// 设备名（如 sda、nvme0n1p1）
+    pub name: String,
+    /// 块设备路径（如 /dev/sda、/dev/nvme0n1p1）
+    pub path: String,
+    /// 容量描述（如 512G）
+    pub size: String,
+    /// 设备类型（disk / part）
+    pub device_type: String,
+    /// 挂载点（若已挂载）
+    pub mountpoint: String,
+    /// 文件系统类型（如 vfat、ext4）
+    pub fstype: String,
+    /// 硬件型号描述
+    pub model: String,
+}
+
 /// 历史快照 DTO
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct SnapshotDto {
