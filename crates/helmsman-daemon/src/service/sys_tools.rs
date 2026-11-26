@@ -1,6 +1,7 @@
 use crate::audit::{AuditAction, with_audit};
 use crate::executor::SafeCommand;
 use crate::service::{DaemonError, GrubService};
+use grub_distro_adapter::DistroProfile;
 use helmsman_client::{BlockDeviceDto, SystemFontDto};
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -421,6 +422,66 @@ impl GrubService {
                 Ok(if stdout.is_empty() { stderr } else { stdout })
             },
         )
+    }
+
+    /// 切换目标系统挂载根目录（传 "/" 或空串恢复宿主机默认环境）
+    ///
+    /// # Errors
+    /// 当目标根目录不存在或缺少 `/etc/default/grub` 与 `/etc/grub.d` 时返回 [`DaemonError::SystemToolFailed`]。
+    pub fn set_target_root_as(
+        &self,
+        root_path: &str,
+        caller_uid: u32,
+    ) -> Result<PathBuf, DaemonError> {
+        let _write_guard = self.acquire_write_lock();
+        let normalized = if root_path.trim().is_empty() || root_path.trim() == "/" {
+            PathBuf::from("/")
+        } else {
+            fs::canonicalize(root_path.trim()).map_err(|e| DaemonError::SystemToolFailed {
+                operation: "校验目标根目录".to_string(),
+                reason: format!("无法访问目录 '{root_path}': {e}"),
+            })?
+        };
+
+        with_audit(
+            caller_uid,
+            AuditAction::SwitchTargetRoot,
+            format!("切换目标系统根目录至 {}", normalized.display()),
+            None,
+            None,
+            |_| (true, None),
+            || {
+                if normalized != Path::new("/") {
+                    if !normalized.is_dir() {
+                        return Err(DaemonError::SystemToolFailed {
+                            operation: "校验目标根目录".to_string(),
+                            reason: format!("'{}' 不是目录", normalized.display()),
+                        });
+                    }
+                    let has_default = normalized.join("etc/default/grub").is_file();
+                    let has_grub_d = normalized.join("etc/grub.d").is_dir();
+                    if !has_default && !has_grub_d {
+                        return Err(DaemonError::SystemToolFailed {
+                            operation: "校验目标系统结构".to_string(),
+                            reason: format!(
+                                "目录 '{}' 下既无 etc/default/grub 也无 etc/grub.d，不像是可修复的 Linux 根分区",
+                                normalized.display()
+                            ),
+                        });
+                    }
+                }
+
+                let mut guard = self.target_root.lock().unwrap_or_else(|p| p.into_inner());
+                *guard = normalized.clone();
+                info!("已切换 Helmsman 目标系统根目录为: {}", normalized.display());
+                Ok(normalized)
+            },
+        )
+    }
+
+    /// 供状态查询返回当前目标根目录与实时探测轮廓
+    pub fn current_distro_profile(&self) -> &DistroProfile {
+        &self.distro_profile
     }
 }
 

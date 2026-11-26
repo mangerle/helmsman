@@ -1,5 +1,5 @@
 use crate::app::HelmsmanWindow;
-use crate::views::{page_header, scroll_page_container, section_card, setting_row};
+use crate::views::{kv_row, page_header, scroll_page_container, section_card, setting_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::label::Label;
@@ -10,7 +10,7 @@ use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, StyledExt as
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-/// 渲染“系统救援与脚本”页面（`/etc/grub.d/` 脚本管理、`grub-install` 重装引导）
+/// 渲染“系统救援与脚本”页面（目标挂载环境切换、`/etc/grub.d/` 脚本管理、`grub-install` 重装引导）
 pub fn render_system_tools(
     win: &HelmsmanWindow,
     cx: &mut Context<HelmsmanWindow>,
@@ -18,7 +18,7 @@ pub fn render_system_tools(
     scroll_page_container()
         .child(page_header(
             "系统救援与脚本管理",
-            "管理 /etc/grub.d/ 原生脚本以及重装 GRUB 引导记录",
+            "管理 /etc/grub.d/ 原生脚本、重装 GRUB 引导记录以及切换外部系统挂载目录",
             Some(
                 Tag::new()
                     .with_variant(TagVariant::Warning)
@@ -28,8 +28,72 @@ pub fn render_system_tools(
             ),
             cx,
         ))
+        .child(render_target_root_section(win, cx))
         .child(render_grub_scripts_section(win, cx))
         .child(render_reinstall_grub_section(win, cx))
+}
+
+fn render_target_root_section(
+    win: &HelmsmanWindow,
+    cx: &mut Context<HelmsmanWindow>,
+) -> impl IntoElement {
+    let current_root = win
+        .backend
+        .system_status
+        .as_ref()
+        .map(|s| s.target_root.as_str())
+        .unwrap_or("/");
+    let is_external = current_root != "/";
+
+    section_card("目标挂载环境切换（Live USB / 离线修复）", cx)
+        .child(kv_row(
+            "当前目标根目录",
+            if is_external {
+                current_root
+            } else {
+                "/ (当前运行宿主机)"
+            },
+            cx,
+        ))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .flex_1()
+                        .child(Input::new(&win.extra_inputs.target_root_input).small()),
+                )
+                .child(
+                    Button::new("btn-switch-target-root")
+                        .outline()
+                        .small()
+                        .label("切换目标目录")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let root = this
+                                .extra_inputs
+                                .target_root_input
+                                .read(cx)
+                                .value()
+                                .trim()
+                                .to_string();
+                            this.switch_target_root(&root, cx);
+                        })),
+                )
+                .child(
+                    Button::new("btn-reset-target-root")
+                        .ghost()
+                        .small()
+                        .label("恢复宿主机 /")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.extra_inputs
+                                .target_root_input
+                                .update(cx, |s, cx| s.set_value("/", window, cx));
+                            this.switch_target_root("/", cx);
+                        })),
+                ),
+        )
 }
 
 fn render_grub_scripts_section(

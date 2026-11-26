@@ -183,6 +183,7 @@ impl HelmsmanDbusAdapter {
                 .to_string_lossy()
                 .into_owned(),
             update_command: profile.update_command.clone(),
+            target_root: self.service.effective_root().to_string_lossy().into_owned(),
         })
     }
 
@@ -736,7 +737,10 @@ impl HelmsmanDbusAdapter {
         self.idle_watcher.touch();
         self.verify_polkit_read(header, connection).await?;
         let service = Arc::clone(&self.service);
-        spawn_service_task("块设备扫描任务", move || service.list_block_devices()).await
+        spawn_service_task("块设备扫描任务", move || {
+            service.list_block_devices()
+        })
+        .await
     }
 
     /// 重装 GRUB 引导程序至 MBR 磁盘或 UEFI ESP 分区
@@ -761,6 +765,41 @@ impl HelmsmanDbusAdapter {
         };
         spawn_service_task("GRUB 重装引导任务", move || {
             service.reinstall_grub_as(&params, caller_uid)
+        })
+        .await
+    }
+
+    /// 切换目标系统挂载根目录（传 "/" 或空串恢复宿主机默认环境）
+    pub async fn set_target_root(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        root_path: &str,
+    ) -> Result<SystemStatusDto, HelmsmanDbusError> {
+        let _guard = self.idle_watcher.enter_busy();
+        let caller_uid = self
+            .verify_polkit(header, connection, polkit_actions::ACTION_SWITCH_ROOT)
+            .await?;
+        let service = Arc::clone(&self.service);
+        let root_str = root_path.to_string();
+        spawn_service_task("目标环境切换任务", move || {
+            service.set_target_root_as(&root_str, caller_uid)?;
+            let profile = &service.distro_profile;
+            Ok::<SystemStatusDto, DaemonError>(SystemStatusDto {
+                distro_name: profile.name.clone(),
+                distro_family: format!("{:?}", profile.family),
+                firmware_type: format!("{:?}", profile.firmware),
+                config_path: service
+                    .effective_default_config_path()
+                    .to_string_lossy()
+                    .into_owned(),
+                target_boot_path: service
+                    .effective_boot_cfg_path()
+                    .to_string_lossy()
+                    .into_owned(),
+                update_command: profile.update_command.clone(),
+                target_root: service.effective_root().to_string_lossy().into_owned(),
+            })
         })
         .await
     }

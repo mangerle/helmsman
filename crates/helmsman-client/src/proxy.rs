@@ -127,4 +127,7 @@ pub trait HelmsmanApi {
         device_path: &str,
         efi_directory: &str,
     ) -> zbus::Result<String>;
+
+    /// 切换目标系统挂载根目录（传 "/" 或空串恢复宿主机默认环境）
+    fn set_target_root(&self, root_path: &str) -> zbus::Result<SystemStatusDto>;
 }

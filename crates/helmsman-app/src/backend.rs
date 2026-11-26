@@ -376,6 +376,14 @@ pub fn reinstall_grub(
         .map_err(|e| format!("重装 GRUB 引导失败: {e}"))
 }
 
+/// 切换目标系统挂载根目录
+pub fn set_target_root(root_path: &str) -> Result<SystemStatusDto, String> {
+    let proxy = connect_proxy()?;
+    proxy
+        .set_target_root(root_path)
+        .map_err(|e| format!("切换目标挂载环境失败: {e}"))
+}
+
 /// 临时下载文件 RAII 守卫，确保退出作用域时自动删除临时压缩包
 struct TempFileGuard(PathBuf);
 

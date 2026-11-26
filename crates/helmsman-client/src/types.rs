@@ -25,6 +25,8 @@ pub struct SystemStatusDto {
     pub target_boot_path: String,
     /// 引导生成命令
     pub update_command: String,
+    /// 当前管理的目标系统根目录（默认 "/"）
+    pub target_root: String,
 }
 
 impl std::fmt::Display for SystemStatusDto {

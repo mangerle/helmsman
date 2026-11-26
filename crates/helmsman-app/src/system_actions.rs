@@ -157,4 +157,25 @@ impl HelmsmanWindow {
         }
         cx.notify();
     }
+
+    /// 切换目标系统挂载根目录（Live USB 修复模式）并重新加载配置
+    pub fn switch_target_root(&mut self, target_root: &str, cx: &mut Context<Self>) {
+        if self.backend.is_demo_mode {
+            self.toast = Some((false, "演示模式下无法切换真实宿主机挂载根目录".to_string()));
+            cx.notify();
+            return;
+        }
+
+        match backend::set_target_root(target_root) {
+            Ok(status) => {
+                let new_root = status.target_root.clone();
+                self.reload_from_backend(cx);
+                self.toast = Some((true, format!("已切换目标引导环境至: {new_root}")));
+            }
+            Err(e) => {
+                self.toast = Some((false, e));
+            }
+        }
+        cx.notify();
+    }
 }
